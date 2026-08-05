@@ -114,9 +114,38 @@ Piper usa `idioma_REGIÓN-nombre-calidad`. Así `af_heart` es «Heart · voz fem
 · acento estadounidense · calidad alta».
 
 Cuando un motor añada voces nuevas, aparecen solas con sus metadatos correctos.
-Y **lo que no se puede derivar se declara desconocido**: el nombre de una voz
-Piper no indica el género, así que no se adivina. Etiquetar mal el género de una
-voz es peor que no etiquetarlo.
+
+### El género, y un modelo que estaba a medias
+
+El nombre de una voz Piper no indica el género. Pero al buscar la fuente real
+apareció algo mejor que adivinarlo: el índice oficial de `piper-voices` publica
+un `speaker_id_map`, y **el modelo español trae dos hablantes**:
+
+```
+es_ES-sharvard-medium →  speaker_id_map: {"M": 0, "F": 1}
+```
+
+HearMe usaba siempre el hablante 0. **A la voz femenina no se llegaba nunca**, y
+nada lo indicaba. Ahora un modelo con dos hablantes son dos voces en el catálogo
+—`es_ES-sharvard-medium#F` y `#M`— y el `speaker_id` llega a la síntesis, que es
+lo que hace que elegir una u otra cambie de verdad lo que suena.
+
+El género sale entonces de tres sitios, por orden de fiabilidad:
+
+| Fuente | Cuántas | Ejemplo |
+| --- | --- | --- |
+| Convenio del nombre (Kokoro) | derivado | `af_heart` → femenina |
+| `speaker_id_map` oficial (Piper) | dato | `#F` → femenina |
+| Tabla declarada a mano | 17 modelos | `de_DE-thorsten` → masculina |
+| Sin señal fiable | 5 modelos | `sv_SE-nst` → desconocido |
+
+**45 de 51 voces (88%) llevan género.** Las cinco restantes —MLS, NST, DFKI,
+Talesyntese, VAIS1000— son conjuntos anónimos que no identifican a nadie ni en
+su nombre ni en su documentación, y se quedan como desconocidas: etiquetar mal a
+alguien es peor que no etiquetarlo.
+
+La tabla declarada se distingue de lo derivado a propósito. Puede tener errores,
+y corregir uno es cambiar una línea en `_PIPER_SINGLE_GENDER`.
 
 **Muestras audibles.** Un botón «Escuchar» en cada tarjeta. Tres detalles que
 deciden si se usa:

@@ -94,6 +94,51 @@ _REGIONS: dict[str, str] = {
     "IN": "India",
 }
 
+#: Género del hablante en modelos multi-hablante. La clave viene del propio
+#: `speaker_id_map` del índice oficial de Piper, así que aquí no se adivina nada.
+_SPEAKER_GENDER: dict[str, Gender] = {
+    "M": Gender.MALE,
+    "F": Gender.FEMALE,
+    # Hablantes ucranianos, nombrados en el índice oficial.
+    "lada": Gender.FEMALE,
+    "tetiana": Gender.FEMALE,
+    "mykyta": Gender.MALE,
+}
+
+#: Género de los modelos de **un solo hablante**.
+#:
+#: Aquí no hay nada que derivar: el nombre del archivo no lo indica y el índice
+#: oficial de Piper tampoco lo publica. Es una tabla **declarada** a partir de la
+#: documentación de cada conjunto de datos y del nombre propio de la persona que
+#: prestó la voz.
+#:
+#: Se distingue de lo derivado a propósito. Una tabla escrita a mano puede tener
+#: errores, y corregir uno es cambiar una línea aquí; las voces sobre las que no
+#: hay señal fiable se quedan fuera y salen como desconocidas, que es preferible
+#: a etiquetar mal a alguien.
+_PIPER_SINGLE_GENDER: dict[str, Gender] = {
+    "en_US-lessac-medium": Gender.FEMALE,
+    "fr_FR-siwis-medium": Gender.FEMALE,
+    "de_DE-thorsten-medium": Gender.MALE,
+    "it_IT-riccardo-x_low": Gender.MALE,
+    "pt_BR-faber-medium": Gender.MALE,
+    "pl_PL-darkman-medium": Gender.MALE,
+    "ru_RU-dmitri-medium": Gender.MALE,
+    "fi_FI-harri-medium": Gender.MALE,
+    "el_GR-rapunzelina-low": Gender.FEMALE,
+    "cs_CZ-jirka-medium": Gender.MALE,
+    "ro_RO-mihai-medium": Gender.MALE,
+    "hu_HU-anna-medium": Gender.FEMALE,
+    "ca_ES-upc_ona-medium": Gender.FEMALE,
+    "ar_JO-kareem-medium": Gender.MALE,
+    "zh_CN-huayan-medium": Gender.FEMALE,
+    "fa_IR-amir-medium": Gender.MALE,
+    "hi_IN-pratham-medium": Gender.MALE,
+    # Sin entrada, y a conciencia: nl_NL-mls (52 hablantes de LibriVox),
+    # sv_SE-nst, da_DK/no_NO-talesyntese, tr_TR-dfki y vi_VN-vais1000 no
+    # identifican a nadie en su nombre ni en su documentación.
+}
+
 _PIPER_NAME = re.compile(
     r"^(?P<lang>[a-z]{2})_(?P<region>[A-Z]{2})-(?P<name>[^-]+)-(?P<quality>.+)$"
 )
@@ -181,17 +226,37 @@ def parse_kokoro(voice_id: str) -> tuple[str, Gender, str, str]:
     return idioma, genero, acento, _titleize(resto or voice_id)
 
 
-def parse_piper(voice_id: str) -> tuple[str, str, Quality, str]:
-    """Deriva (idioma, región, calidad, nombre) del convenio de Piper."""
-    coincidencia = _PIPER_NAME.match(voice_id)
+def parse_piper(voice_id: str) -> tuple[str, str, Quality, str, Gender]:
+    """Deriva (idioma, región, calidad, nombre, género) de una voz Piper.
+
+    El identificador puede llevar hablante: `es_ES-sharvard-medium#F`. En ese
+    caso el género sale del `speaker_id_map` oficial, que es un dato, no una
+    suposición. Sin hablante, se consulta la tabla declarada.
+    """
+    modelo, _, hablante = voice_id.partition("#")
+
+    coincidencia = _PIPER_NAME.match(modelo)
     if coincidencia is None:
-        return "", "", Quality.MEDIUM, _titleize(voice_id)
+        return "", "", Quality.MEDIUM, _titleize(voice_id), Gender.UNKNOWN
+
     datos = coincidencia.groupdict()
+    nombre = _titleize(datos["name"])
+
+    if hablante:
+        genero = _SPEAKER_GENDER.get(hablante, Gender.UNKNOWN)
+        # El hablante distingue la voz: sin esto, dos voces del mismo modelo se
+        # llamarían igual en la lista y no habría forma de saber cuál es cuál.
+        etiqueta = {"M": "voz masculina", "F": "voz femenina"}.get(hablante)
+        nombre = f"{nombre} {hablante}" if etiqueta is None else nombre
+    else:
+        genero = _PIPER_SINGLE_GENDER.get(modelo, Gender.UNKNOWN)
+
     return (
         datos["lang"],
         _REGIONS.get(datos["region"], datos["region"]),
         _PIPER_QUALITY.get(datos["quality"], Quality.MEDIUM),
-        _titleize(datos["name"]),
+        nombre,
+        genero,
     )
 
 
@@ -223,14 +288,13 @@ def profile_for(voice_id: str, *, engine: Any, language: str) -> VoiceProfile:
         )
 
     if nombre_motor == "piper":
-        idioma, region, calidad, nombre = parse_piper(voice_id)
-        # El género no se deduce: el nombre de Piper no lo indica y adivinarlo
-        # por el nombre propio acertaría en unos idiomas y fallaría en otros.
+        idioma, region, calidad, nombre, genero = parse_piper(voice_id)
         return VoiceProfile(
             id=voice_id,
             engine=nombre_motor,
             language=idioma or language,
             display_name=nombre,
+            gender=genero,
             region=region,
             quality=calidad,
             naturalness=naturalidad,

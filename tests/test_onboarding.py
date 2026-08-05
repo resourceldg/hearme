@@ -47,7 +47,7 @@ def test_los_metadatos_de_kokoro_salen_del_nombre() -> None:
 
 
 def test_los_metadatos_de_piper_salen_del_nombre() -> None:
-    idioma, region, calidad, nombre = parse_piper("es_ES-sharvard-medium")
+    idioma, region, calidad, nombre, _ = parse_piper("es_ES-sharvard-medium")
     assert (idioma, region, calidad, nombre) == ("es", "España", Quality.MEDIUM, "Sharvard")
 
     assert parse_piper("it_IT-riccardo-x_low")[2] is Quality.LOW
@@ -55,19 +55,62 @@ def test_los_metadatos_de_piper_salen_del_nombre() -> None:
 
 def test_un_nombre_que_no_sigue_el_convenio_no_revienta() -> None:
     """Un plugin puede nombrar sus voces como quiera."""
-    idioma, region, calidad, nombre = parse_piper("voz-rara")
+    idioma, region, calidad, nombre, genero = parse_piper("voz-rara")
     assert idioma == "" and region == ""
     assert nombre  # algo legible, no una excepción
+    assert genero is Gender.UNKNOWN
 
 
-def test_el_genero_de_piper_queda_desconocido_en_vez_de_adivinarse() -> None:
-    """Etiquetar mal el género de una voz es peor que no etiquetarlo."""
-    perfil = VoiceProfile(
-        id="es_ES-sharvard-medium", engine="piper", language="es", display_name="Sharvard"
-    )
-    assert perfil.gender is Gender.UNKNOWN
+def test_el_genero_del_hablante_sale_del_indice_oficial() -> None:
+    """No se adivina: `speaker_id_map` de piper-voices lo declara como M y F."""
+    assert parse_piper("es_ES-sharvard-medium#F")[4] is Gender.FEMALE
+    assert parse_piper("es_ES-sharvard-medium#M")[4] is Gender.MALE
+    assert parse_piper("uk_UA-ukrainian_tts-medium#lada")[4] is Gender.FEMALE
+    assert parse_piper("uk_UA-ukrainian_tts-medium#mykyta")[4] is Gender.MALE
+
+
+def test_el_genero_de_un_modelo_de_un_hablante_sale_de_la_tabla_declarada() -> None:
+    """Ni el nombre ni el índice oficial lo publican: es una tabla escrita a mano."""
+    assert parse_piper("de_DE-thorsten-medium")[4] is Gender.MALE
+    assert parse_piper("ca_ES-upc_ona-medium")[4] is Gender.FEMALE
+
+
+def test_sin_señal_fiable_el_genero_queda_desconocido() -> None:
+    """Etiquetar mal a alguien es peor que no etiquetarlo.
+
+    Estas voces no identifican a nadie ni en su nombre ni en su documentación.
+    """
+    for voz in ("sv_SE-nst-medium", "tr_TR-dfki-medium", "nl_NL-mls-medium"):
+        assert parse_piper(voz)[4] is Gender.UNKNOWN, f"'{voz}' no debería tener género"
+
+    perfil = VoiceProfile(id="sv_SE-nst-medium", engine="piper", language="sv", display_name="Nst")
     assert "femenina" not in perfil.describe()
     assert "masculina" not in perfil.describe()
+
+
+def test_un_modelo_con_dos_hablantes_son_dos_voces() -> None:
+    """El español de Piper trae voz masculina y femenina.
+
+    Devolver solo el modelo escondía la mitad del catálogo: se usaba siempre el
+    hablante 0 y a la voz femenina no se llegaba nunca.
+    """
+    import asyncio
+
+    from hearme.infrastructure.tts.piper import PiperEngine
+
+    voces = asyncio.run(PiperEngine(language="es").voices("es"))
+    assert len(voces) == 2
+    assert {parse_piper(v)[4] for v in voces} == {Gender.FEMALE, Gender.MALE}
+
+
+def test_el_hablante_elegido_llega_a_la_sintesis() -> None:
+    """Sin esto, elegir la voz femenina no cambiaría lo que suena."""
+    from hearme.infrastructure.tts.piper import PiperEngine
+
+    assert PiperEngine.speaker_id("es_ES-sharvard-medium#M") == 0
+    assert PiperEngine.speaker_id("es_ES-sharvard-medium#F") == 1
+    # Un modelo de un solo hablante no lleva índice.
+    assert PiperEngine.speaker_id("de_DE-thorsten-medium") is None
 
 
 def test_la_descripcion_es_legible_por_una_persona() -> None:

@@ -30,6 +30,23 @@ _HF_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 _MAKEUP_GAIN = 1.4
 
 #: Voz recomendada por idioma -> ruta relativa en el repositorio de voces.
+#: Modelos con varios hablantes, con el mapa que declara el propio índice de
+#: `rhasspy/piper-voices` (campo `speaker_id_map` de su voices.json).
+#:
+#: Esto no es una suposición: es el dato oficial. Y arregla una limitación que
+#: pasaba desapercibida —el modelo español trae voz masculina y femenina, y
+#: HearMe usaba siempre el hablante 0, así que a la femenina no se llegaba nunca.
+_SPEAKERS: dict[str, dict[str, int]] = {
+    "es_ES-sharvard-medium": {"M": 0, "F": 1},
+    "uk_UA-ukrainian_tts-medium": {"lada": 0, "mykyta": 1, "tetiana": 2},
+    # nl_NL-mls-medium tiene 52 hablantes identificados solo por número de
+    # LibriVox. Exponerlos sería una lista ilegible sin ninguna información útil,
+    # así que se usa el que trae por defecto.
+}
+
+#: Separador entre el modelo y el hablante: `es_ES-sharvard-medium#F`.
+SPEAKER_SEP = "#"
+
 _VOICE_INDEX: dict[str, str] = {
     "es": "es/es_ES/sharvard/medium/es_ES-sharvard-medium",
     "en": "en/en_US/lessac/medium/en_US-lessac-medium",
@@ -83,8 +100,33 @@ class PiperEngine:
         return True
 
     async def voices(self, language: str | None = None) -> tuple[str, ...]:
+        """Voces disponibles, una por hablante si el modelo tiene varios.
+
+        Un modelo con dos hablantes son dos voces para quien elige, no una.
+        Devolver solo el modelo escondía la mitad del catálogo.
+        """
         key = language or self.language
-        return (_VOICE_INDEX[key].rsplit("/", 1)[-1],) if key in _VOICE_INDEX else ()
+        if key not in _VOICE_INDEX:
+            return ()
+        modelo = _VOICE_INDEX[key].rsplit("/", 1)[-1]
+        hablantes = _SPEAKERS.get(modelo)
+        if not hablantes:
+            return (modelo,)
+        return tuple(f"{modelo}{SPEAKER_SEP}{nombre}" for nombre in hablantes)
+
+    @staticmethod
+    def split_voice(voice: str) -> tuple[str, str | None]:
+        """`es_ES-sharvard-medium#F` -> (`es_ES-sharvard-medium`, `F`)."""
+        modelo, _, hablante = voice.partition(SPEAKER_SEP)
+        return modelo, hablante or None
+
+    @staticmethod
+    def speaker_id(voice: str) -> int | None:
+        """Índice del hablante dentro del modelo, o None si es de uno solo."""
+        modelo, hablante = PiperEngine.split_voice(voice)
+        if hablante is None:
+            return None
+        return _SPEAKERS.get(modelo, {}).get(hablante)
 
     def default_voice(self, language: str) -> str:
         path = _VOICE_INDEX.get(language) or _VOICE_INDEX["en"]
@@ -148,8 +190,9 @@ class PiperEngine:
 
         model_path = await self.ensure_model(self.language)
         out_path = out_dir / f"{utterance.order:06d}_{utterance.id[:8]}.wav"
+        speaker = self.speaker_id(voice)
         rate, duration = await anyio.to_thread.run_sync(
-            self._synthesize_sync, utterance, model_path, out_path
+            self._synthesize_sync, utterance, model_path, out_path, speaker
         )
         return AudioSegment(
             utterance_id=utterance.id,
@@ -160,7 +203,7 @@ class PiperEngine:
         )
 
     @staticmethod
-    def _synthesis_config(utterance: Utterance) -> Any | None:
+    def _synthesis_config(utterance: Utterance, speaker: int | None = None) -> Any | None:
         """Traduce el estilo de narración a parámetros de Piper.
 
         Sin esto, `rate` y `emphasis` —lo que distingue «poesía» de «técnico»— se
@@ -184,10 +227,17 @@ class PiperEngine:
             length_scale=1.0 / utterance.rate if utterance.rate else 1.0,
             volume=_MAKEUP_GAIN * utterance.emphasis,
             normalize_audio=False,
+            # Sin esto, elegir la voz femenina de un modelo con dos hablantes no
+            # cambiaba nada: siempre sonaba el hablante 0.
+            speaker_id=speaker,
         )
 
     def _synthesize_sync(
-        self, utterance: Utterance, model_path: Path, out_path: Path
+        self,
+        utterance: Utterance,
+        model_path: Path,
+        out_path: Path,
+        speaker: int | None = None,
     ) -> tuple[int, float]:
         voice = self._voice(self.language, model_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -195,7 +245,7 @@ class PiperEngine:
         with wave.open(str(out_path), "wb") as wav:
             # La API de Piper cambió en 1.3: se soportan ambas formas.
             if hasattr(voice, "synthesize_wav"):
-                config = self._synthesis_config(utterance)
+                config = self._synthesis_config(utterance, speaker)
                 if config is None:
                     voice.synthesize_wav(utterance.text, wav)
                 else:
