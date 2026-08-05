@@ -1,0 +1,60 @@
+HearMe
+Copyright 2026 HearMe contributors
+
+Este producto incluye software desarrollado por la comunidad de HearMe
+(https://github.com/resourceldg/hearme), distribuido bajo la Licencia Apache,
+versión 2.0. El texto completo está en el archivo LICENSE.
+
+El mapa completo de licencias —contribuciones entrantes, uso del nombre,
+donaciones y lo que todavía no está cerrado— está en docs/LICENSING.md.
+
+---
+
+El corpus de narración de HearMe —las anotaciones de prosodia aportadas y
+validadas por la comunidad— NO se distribuye bajo Apache-2.0, sino bajo CC0 1.0
+Universal (dedicación al dominio público). Ver LICENSE-CORPUS.md.
+
+Se eligió una licencia distinta y más permisiva para el corpus a propósito: el
+objetivo es que sirva a cualquiera, incluidos proyectos que compitan con este.
+
+---
+
+Marcas
+------
+
+Conforme a la cláusula 6 de la Licencia Apache 2.0, esta licencia NO concede
+derecho alguno sobre el nombre «HearMe» ni sobre su identidad visual.
+
+Puedes hacer un fork, modificarlo y distribuirlo, incluso comercialmente. Se
+pide por cortesía que no lo llames también HearMe: quien lo instale creería que
+es este proyecto y sus problemas volverían aquí. No hay registro de marca ni
+intención de perseguir a nadie.
+
+---
+
+Donaciones
+----------
+
+El proyecto no recauda ni gestiona dinero. Una donación a una persona
+concreta no otorga licencia, propiedad ni derecho alguno sobre el software, el
+corpus ni el nombre, y no crea relación contractual con el proyecto.
+
+---
+
+Componentes opcionales con licencias restrictivas
+-------------------------------------------------
+
+Los siguientes componentes NO se instalan por defecto y NO se usan salvo
+activación explícita mediante HEARME_ALLOW_NON_COMMERCIAL_MODELS=true. Quien los
+active asume la responsabilidad de comprobar que su uso cumple esas licencias.
+
+  - XTTS-v2 (Coqui)  — Coqui Public Model License (CPML): prohibido el uso
+                       comercial.
+  - NLLB (Meta)      — CC-BY-NC 4.0: prohibido el uso comercial.
+  - PyMuPDF          — AGPL-3.0. Disponible como extra y nunca importado por el
+                       núcleo.
+
+El resto de dependencias del núcleo llevan licencias permisivas (MIT, Apache-2.0
+o BSD), condición necesaria para que cualquier institución pública pueda
+desplegar HearMe sin revisión jurídica previa. El razonamiento por dependencia
+está en docs/ANALISIS-COMPARATIVO.md.

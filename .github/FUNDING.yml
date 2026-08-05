@@ -1,0 +1,14 @@
+# Donaciones personales, de persona a persona.
+#
+# El proyecto no recauda ni gestiona dinero. Cada quien publica su enlace y
+# quien quiera apoyarle lo hace directamente con esa persona.
+#
+# Reglas, medios recomendados y qué NO da una donación:
+#   GOVERNANCE.md § Dinero  ·  docs/LICENSING.md
+#
+# Se usan medios libres, por la misma coherencia que se aplica a las
+# dependencias del código. Descomenta lo que uses y borra el resto.
+
+# liberapay: tu-usuario          # software libre (AGPL), sin ánimo de lucro
+# open_collective: hearme        # código abierto, cuentas públicas
+# custom: ["https://tu-web"]     # web propia, IBAN, lo que prefieras

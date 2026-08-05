@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Datos y modelos: nunca al repositorio
+/data/
+/watch/
+*.db
+*.db-wal
+*.db-shm
+models/
+*.onnx
+*.onnx.json
+
+# Salidas
+/out/
+*.m4b
+*.mp3
+*.wav
+
+# Entorno
+.env
+.env.local
+
+# Node / SvelteKit
+node_modules/
+web/.svelte-kit/
+web/build/
+web/.env*
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store

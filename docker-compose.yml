@@ -1,0 +1,98 @@
+# Perfil por defecto: solo la API + worker con SQLite. Cero servicios extra.
+#
+#   docker compose up -d
+#
+# Perfiles opcionales (se activan a demanda, nunca por defecto):
+#   docker compose --profile postgres up -d   # PostgreSQL en vez de SQLite
+#   docker compose --profile ollama up -d     # LLM local para el modo estudio
+#   docker compose --profile web up -d        # interfaz SvelteKit
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: hearme:latest
+    restart: unless-stopped
+    ports:
+      - "${HEARME_PORT:-8000}:8000"
+    volumes:
+      - hearme-data:/data
+      # Carpeta vigilada: lo que dejes aquí se convierte solo.
+      - ./watch:/watch
+    environment:
+      HEARME_DATA_DIR: /data
+      HEARME_API_HOST: 0.0.0.0
+      HEARME_LOG_LEVEL: ${HEARME_LOG_LEVEL:-INFO}
+      HEARME_OLLAMA_URL: http://ollama:11434
+      HEARME_ALLOW_NON_COMMERCIAL_MODELS: ${HEARME_ALLOW_NON_COMMERCIAL_MODELS:-false}
+      # Vacío = SQLite. El perfil postgres lo sobrescribe.
+      HEARME_DATABASE_URL: ${HEARME_DATABASE_URL:-}
+      # El navegador ve la UI en :3000 y la API en :8000: son orígenes distintos y
+      # sin esto CORS bloquea todas las llamadas. Añade aquí la IP o el dominio
+      # desde el que sirvas la interfaz si no es localhost.
+      HEARME_CORS_ORIGINS: ${HEARME_CORS_ORIGINS:-http://localhost:${HEARME_WEB_PORT:-3000},http://127.0.0.1:${HEARME_WEB_PORT:-3000},http://localhost:5173,http://127.0.0.1:5173}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # Generoso a propósito: el arranque carga plugins, detecta la capacidad del
+      # nodo y crea el esquema. Si expira antes de tiempo, compose tumba el stack
+      # y el motivo real queda enterrado bajo «dependency failed to start».
+      start_period: 90s
+
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hearme
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hearme}
+      POSTGRES_DB: hearme
+    volumes:
+      - hearme-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hearme"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - hearme-ollama:/root/.ollama
+    # Descomenta si el nodo tiene acelerador NVIDIA y el toolkit de contenedores.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  web:
+    profiles: ["web"]
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${HEARME_WEB_PORT:-3000}:3000"
+    environment:
+      # Se lee en tiempo de ejecución vía $env/dynamic/public, no al construir la
+      # imagen. Es la URL que usa el *navegador*, así que `localhost` se refiere a
+      # la máquina del visitante: si sirves a otros equipos, pon aquí la IP real.
+      PUBLIC_API_URL: http://localhost:${HEARME_PORT:-8000}
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  hearme-data:
+  hearme-postgres:
+  hearme-ollama:

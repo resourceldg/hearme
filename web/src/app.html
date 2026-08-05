@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="description" content="Plataforma abierta de narración en voz alta de alta calidad" />
+		<meta name="color-scheme" content="dark light" />
+		<title>HearMe</title>
+		<!--
+			Preferencias aplicadas ANTES del primer píxel.
+
+			Sin esto, la página se pinta en oscuro y salta al tema guardado cuando
+			hidrata: un fogonazo blanco que, a quien tiene fotosensibilidad o migraña,
+			le arruina la sesión. Va inline y síncrono a propósito; es la única
+			excepción a «nada de scripts sueltos» que el proyecto se permite, y está
+			aquí por accesibilidad, no por comodidad.
+		-->
+		<script>
+			(function () {
+				try {
+					var p = JSON.parse(localStorage.getItem('hearme.preferences.v1') || '{}');
+					var r = document.documentElement;
+					r.dataset.theme =
+						p.theme && p.theme !== 'system'
+							? p.theme
+							: window.matchMedia('(prefers-color-scheme: light)').matches
+								? 'light'
+								: 'dark';
+					if (p.contrast) r.dataset.contrast = p.contrast;
+					if (p.density) r.dataset.density = p.density;
+					if (p.motion) r.dataset.motion = p.motion;
+					if (p.targets) r.dataset.targets = p.targets;
+					if (p.reading) r.dataset.reading = p.reading;
+					if (p.expertise) r.dataset.expertise = p.expertise;
+					if (p.fontScale) r.style.setProperty('--font-scale', String(p.fontScale));
+					if (p.focusWidth) r.style.setProperty('--focus-width', p.focusWidth + 'px');
+				} catch (e) {
+					/* almacenamiento bloqueado: se usan los valores por defecto */
+				}
+			})();
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>

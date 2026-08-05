@@ -1,0 +1,265 @@
+/**
+ * Tokens de diseño de HearMe.
+ *
+ * Todo lo que se ve sale de aquí. Ningún componente escribe un color, un tamaño
+ * ni una duración a mano: los toma de estas variables. Eso es lo que permite que
+ * el Adaptive Experience Engine reconfigure la interfaz entera cambiando unos
+ * atributos en <html>, sin tocar un solo componente.
+ *
+ * ## Sobre la paleta
+ *
+ * El punto de partida es VS Code Dark+, por petición expresa. Pero su azul
+ * característico **no cumple WCAG AA como texto**, y está medido:
+ *
+ *   #007acc sobre #1e1e1e -> 3,70:1   (AA exige 4,5:1)
+ *   #0e639c sobre #1e1e1e -> 2,61:1
+ *
+ * Así que se conserva el tono exacto (H=204°, S=100%) y se sube la luminosidad
+ * hasta el mínimo que cumple: #0089e6 -> 4,54:1. Sigue siendo inconfundiblemente
+ * el azul de VS Code, y ahora se puede leer.
+ *
+ * Todos los valores de este archivo están verificados por
+ * `tests/test_design_tokens.py`, que los extrae del CSS y comprueba los ratios.
+ * Un cambio de color que rompa el contraste hace fallar la CI.
+ *
+ * ## Sobre las escalas
+ *
+ * Las escalas de tipografía y espaciado son multiplicativas sobre una variable
+ * raíz. Subir el tamaño de fuente o compactar la densidad no reescribe cien
+ * reglas: cambia un factor y todo el sistema se reacomoda manteniendo las
+ * proporciones. Es la diferencia entre una interfaz que escala y una que se
+ * rompe al ampliarla.
+ */
+
+:root {
+	color-scheme: dark;
+
+	/* --- Superficies. Linaje VS Code Dark+ --------------------------------- */
+	--bg: #1e1e1e; /* editor.background */
+	--bg-elevated: #252526; /* sideBar.background */
+	--surface: #2d2d30; /* input / panel */
+	--surface-hover: #37373d; /* list.hoverBackground */
+	--border: #3e3e42; /* separadores: decorativos, sin mínimo de contraste */
+	--border-strong: #6e6e73; /* controles interactivos: 3,29:1 (AA 1.4.11) */
+
+	/* --- Texto ------------------------------------------------------------- */
+	--text: #d4d4d4; /* 11,25:1 */
+	--text-muted: #9d9d9d; /* 6,15:1 — atenuado pero legible, no decorativo */
+
+	/* --- Acento y estado --------------------------------------------------- */
+	--accent: #0089e6; /* 4,54:1 sobre --bg — para texto, enlaces y bordes */
+	--accent-hover: #35a3f0; /* 6,07:1 */
+	/* Relleno de botones. Es un token aparte porque el texto de un botón va
+	 * sobre el acento, no sobre el fondo de la página: #0089e6 con blanco encima
+	 * solo alcanza 3,67:1. Este llega a 4,69:1 y, casualmente, es casi el
+	 * #007acc original de VS Code. */
+	--accent-solid: #0077c7;
+	--accent-contrast: #ffffff; /* 4,69:1 sobre --accent-solid */
+	--accent-subtle: rgba(0, 137, 230, 0.16);
+	--ok: #4ec9b0; /* 8,18:1 */
+	--warn: #d7ba7d; /* 8,90:1 */
+	--err: #f48771; /* 6,79:1 */
+
+	/* --- Tipografía --------------------------------------------------------
+	 * `--font-scale` lo controla la persona; todo lo demás se deriva. La escala
+	 * es de razón 1,2 (tercera menor): suficiente jerarquía sin saltos bruscos.
+	 */
+	--font-scale: 1;
+	--font-base: calc(1rem * var(--font-scale));
+	--font-xs: calc(var(--font-base) * 0.75);
+	--font-sm: calc(var(--font-base) * 0.875);
+	--font-md: var(--font-base);
+	--font-lg: calc(var(--font-base) * 1.2);
+	--font-xl: calc(var(--font-base) * 1.44);
+	--font-2xl: calc(var(--font-base) * 1.728);
+
+	--font-sans:
+		'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+	--font-mono: 'Cascadia Code', 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+	/* Familia del cuerpo: la cambia el perfil de dislexia sin tocar la interfaz. */
+	--font-reading: var(--font-sans);
+
+	--leading-tight: 1.25;
+	--leading-normal: 1.6;
+	--leading-loose: 1.9;
+	--leading: var(--leading-normal);
+	--tracking: 0em;
+	--word-spacing: normal;
+
+	/* --- Densidad ----------------------------------------------------------
+	 * Un solo factor gobierna todo el ritmo vertical. «Cómoda» y «compacta» no
+	 * son dos hojas de estilo: son este número.
+	 */
+	--density: 1;
+	--space-1: calc(0.25rem * var(--density));
+	--space-2: calc(0.5rem * var(--density));
+	--space-3: calc(0.75rem * var(--density));
+	--space-4: calc(1rem * var(--density));
+	--space-5: calc(1.5rem * var(--density));
+	--space-6: calc(2rem * var(--density));
+	--space-7: calc(3rem * var(--density));
+
+	/* --- Forma -------------------------------------------------------------- */
+	--radius-sm: 4px;
+	--radius: 6px;
+	--radius-lg: 10px;
+	--radius-full: 999px;
+
+	/* Sombras discretas: en oscuro, la elevación se lee mejor por color de
+	 * superficie que por sombra. Aquí solo separan lo que flota. */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+	--shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+	--shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+	/* --- Movimiento --------------------------------------------------------
+	 * `--motion` es un multiplicador: 0 desactiva toda animación sin que ningún
+	 * componente tenga que saber nada de preferencias.
+	 */
+	--motion: 1;
+	--duration-fast: calc(120ms * var(--motion));
+	--duration: calc(200ms * var(--motion));
+	--duration-slow: calc(320ms * var(--motion));
+	--ease: cubic-bezier(0.2, 0, 0.13, 1); /* entrada rápida, salida suave */
+	--ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+
+	/* --- Foco --------------------------------------------------------------
+	 * WCAG 2.2 (2.4.11 Focus Not Obscured, 2.4.13 Focus Appearance). El grosor
+	 * es ajustable porque para quien ve poco, 2 px no bastan.
+	 */
+	--focus-width: 2px;
+	--focus-offset: 2px;
+	--focus-color: var(--accent-hover);
+
+	/* --- Objetivos táctiles ------------------------------------------------
+	 * WCAG 2.2 · 2.5.8 Target Size (Minimum) exige 24×24 px. Se usa 28 como
+	 * suelo y 44 (recomendación de AAA y de las guías táctiles) en el perfil
+	 * de motricidad reducida.
+	 */
+	--target-min: 28px;
+
+	--content-width: 68rem;
+}
+
+/* --- Tema claro ----------------------------------------------------------- */
+
+:root[data-theme='light'] {
+	color-scheme: light;
+	--bg: #ffffff;
+	--bg-elevated: #f6f7f9;
+	--surface: #ffffff;
+	--surface-hover: #eef0f3;
+	--border: #dfe1e6;
+	--border-strong: #767676; /* 4,54:1 */
+	--text: #1f1f1f; /* 16,48:1 */
+	--text-muted: #616161; /* 6,19:1 */
+	--accent: #006bb3; /* 5,59:1 */
+	--accent-hover: #005a99; /* 7,19:1 */
+	--accent-solid: #006bb3; /* blanco encima: 5,59:1 */
+	--accent-contrast: #ffffff;
+	--accent-subtle: rgba(0, 107, 179, 0.1);
+	--ok: #0f7b55; /* 5,27:1 */
+	--warn: #8a6100; /* 5,54:1 */
+	--err: #c02b1d; /* 5,83:1 */
+	--shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+	--shadow: 0 4px 12px rgba(16, 24, 40, 0.1);
+	--shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.14);
+}
+
+/* --- Contraste alto -------------------------------------------------------
+ * No es «lo mismo pero más fuerte»: se va a negro puro y se suben todos los
+ * ratios por encima de 7:1 (nivel AAA), porque quien lo activa suele
+ * necesitarlo de verdad, no como preferencia estética.
+ */
+
+:root[data-contrast='high'] {
+	--bg: #000000;
+	--bg-elevated: #0a0a0a;
+	--surface: #121212;
+	--surface-hover: #1f1f1f;
+	--border: #5a5a5a;
+	--border-strong: #a0a0a0; /* 8,03:1 */
+	--text: #ffffff; /* 21:1 */
+	--text-muted: #c8c8c8; /* 12,55:1 */
+	--accent: #4cc2ff; /* 10,47:1 */
+	--accent-hover: #8ad4ff;
+	--accent-solid: #4cc2ff; /* negro encima: 10,47:1 */
+	--accent-contrast: #000000;
+	--accent-subtle: rgba(76, 194, 255, 0.22);
+	--ok: #6bffb0; /* 16,56:1 */
+	--warn: #ffd479;
+	--err: #ff8a80; /* 9,20:1 */
+	--focus-width: 3px;
+	--shadow: none;
+	--shadow-lg: none;
+}
+
+:root[data-theme='light'][data-contrast='high'] {
+	--bg: #ffffff;
+	--bg-elevated: #ffffff;
+	--surface: #ffffff;
+	--surface-hover: #e8e8e8;
+	--border: #767676;
+	--border-strong: #1f1f1f;
+	--text: #000000;
+	--text-muted: #1f1f1f;
+	--accent: #00408a;
+	--accent-hover: #002a5c;
+	--accent-solid: #00408a;
+	--accent-contrast: #ffffff;
+	--accent-subtle: rgba(0, 64, 138, 0.12);
+	--ok: #005c3c;
+	--warn: #5c4000;
+	--err: #8a1008;
+}
+
+/* --- Densidad -------------------------------------------------------------- */
+
+:root[data-density='compact'] {
+	--density: 0.75;
+	--leading: var(--leading-tight);
+}
+:root[data-density='comfortable'] {
+	--density: 1.25;
+	--leading: var(--leading-loose);
+}
+
+/* --- Movimiento -----------------------------------------------------------
+ * El sistema manda salvo que la persona diga otra cosa explícitamente. Es la
+ * lectura correcta de prefers-reduced-motion: quien lo activó en su sistema no
+ * debería tener que repetirlo en cada web.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+	:root:not([data-motion='full']) {
+		--motion: 0;
+	}
+}
+:root[data-motion='none'] {
+	--motion: 0;
+}
+:root[data-motion='reduced'] {
+	--motion: 0.5;
+}
+
+/* --- Objetivos táctiles grandes -------------------------------------------- */
+
+:root[data-targets='large'] {
+	--target-min: 44px;
+}
+
+/* --- Ajustes tipográficos de lectura ---------------------------------------
+ * Valores tomados de la investigación sobre dislexia: más interlínea, más
+ * espacio entre letras y entre palabras. Cumple además WCAG 1.4.12 (Text
+ * Spacing), que exige que la interfaz aguante justo estos incrementos.
+ */
+
+:root[data-reading='dyslexia'] {
+	--leading: 1.8;
+	--tracking: 0.06em;
+	--word-spacing: 0.16em;
+	--font-reading: 'Atkinson Hyperlegible', 'Verdana', var(--font-sans);
+}
+
+:root[data-reading='focus'] {
+	--leading: 1.75;
+}
