@@ -110,6 +110,7 @@ ignore = ["B008"]  # Depends() en firmas FastAPI
 # en prosa, y sustituirlo por una equis lo haría menos legible.
 "src/hearme/knowledge/knowledge.py" = ["RUF002"]
 "src/hearme/privacy/profile.py" = ["RUF002"]
+"src/hearme/knowledge/sharing.py" = ["RUF002"]
 # «24×24 px» es la notación de la propia norma WCAG; escribirlo con equis
 # latina lo alejaría del texto que cita.
 "tests/test_design_tokens.py" = ["RUF002"]

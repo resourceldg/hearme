@@ -466,3 +466,114 @@ def test_los_tamanos_se_muestran_legibles() -> None:
     assert human(512) == "512 B"
     assert human(2048) == "2.0 KB"
     assert human(5 * 1024**3) == "5.0 GB"
+
+
+# --- compartir narraciones ----------------------------------------------------
+
+
+def _narracion(**kwargs):
+    from hearme.knowledge.lab import Provenance
+    from hearme.knowledge.sharing import NarrationPlanRef, SharedNarration
+
+    base = {
+        "plan": NarrationPlanRef(
+            text_digest="abc123", language="es", voice="ef_dora", engine="kokoro", style="novel"
+        ),
+        "title": "Antología de Spoon River",
+        "attribution": "Edgar Lee Masters, Antología de Spoon River (1915), dominio público",
+        "provenance": Provenance.PUBLIC_DOMAIN,
+        "duration_s": 16440.0,
+        "size_bytes": 131_520_000,
+        "contributor": "biblioteca-municipal",
+    }
+    return SharedNarration(**{**base, **kwargs})
+
+
+def test_no_se_puede_compartir_una_obra_con_derechos() -> None:
+    """Distribuir el audio de una obra con derechos es una obra derivada."""
+    from hearme.knowledge.lab import Provenance
+    from hearme.knowledge.sharing import ShareError
+
+    with pytest.raises(ShareError, match="dominio público"):
+        _narracion(provenance=Provenance.SYNTHETIC)
+
+
+def test_compartir_exige_atribucion_verificable() -> None:
+    """«Dominio público» a secas no permite a nadie comprobar nada."""
+    from hearme.knowledge.sharing import ShareError
+
+    with pytest.raises(ShareError, match="atribución"):
+        _narracion(attribution="es libre")
+
+
+def test_la_misma_narracion_no_se_guarda_dos_veces() -> None:
+    """Mismo plan y mismo texto dan el mismo audio: duplicarlo es pagar dos veces."""
+    from hearme.knowledge.sharing import SharedCatalog
+
+    catalogo = SharedCatalog()
+    primera, es_nueva = catalogo.share(_narracion())
+    assert es_nueva
+
+    segunda, es_nueva = catalogo.share(_narracion(contributor="otra-biblioteca"))
+    assert not es_nueva
+    assert segunda is primera
+    assert primera.reuses == 1
+    assert len(catalogo.items) == 1
+
+
+def test_compartir_ahorra_trabajo_a_los_demas() -> None:
+    """Es la métrica que dice si compartir sirve de algo."""
+    from hearme.knowledge.sharing import SharedCatalog
+
+    catalogo = SharedCatalog()
+    catalogo.share(_narracion())
+    for _ in range(3):
+        catalogo.share(_narracion())
+
+    # 274 minutos de audio, reutilizados tres veces.
+    assert catalogo.total_cpu_minutes_saved > 800
+    assert "evitado" in catalogo.summary()["explanation"]
+
+
+def test_se_puede_encontrar_una_narracion_ya_hecha() -> None:
+    """La consulta que evita reconvertir un clásico que ya narró alguien."""
+    from hearme.knowledge.sharing import NarrationPlanRef, SharedCatalog
+
+    catalogo = SharedCatalog()
+    compartida = _narracion()
+    catalogo.share(compartida)
+
+    mismo = NarrationPlanRef(
+        text_digest="abc123", language="es", voice="ef_dora", engine="kokoro", style="novel"
+    )
+    otro_estilo = NarrationPlanRef(
+        text_digest="abc123", language="es", voice="ef_dora", engine="kokoro", style="poetry"
+    )
+
+    assert catalogo.find(mismo) is compartida
+    assert catalogo.find(otro_estilo) is None, "otro estilo es otra narración"
+
+
+def test_la_retirada_es_inmediata_y_sin_discusion() -> None:
+    """Si alguien reclama derechos, primero se retira y luego se habla."""
+    from hearme.knowledge.sharing import SharedCatalog
+
+    catalogo = SharedCatalog()
+    compartida = _narracion()
+    catalogo.share(compartida)
+
+    assert catalogo.withdraw(compartida.plan.digest, "reclamación de derechos")
+    assert not compartida.is_available
+    assert catalogo.find(compartida.plan) is None
+    assert catalogo.total_bytes == 0
+
+
+def test_lo_compartido_no_revela_nada_mas_de_quien_comparte() -> None:
+    from hearme.knowledge.sharing import SHARING_NOTICE
+
+    datos = _narracion().to_dict()
+    assert "document" not in datos
+    assert "source_path" not in datos
+    # El seudónimo consta porque la declaración de dominio público es suya.
+    assert datos["contributor"] == "biblioteca-municipal"
+    assert "retirarla en cualquier momento" in SHARING_NOTICE

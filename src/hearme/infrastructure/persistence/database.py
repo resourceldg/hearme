@@ -48,6 +48,15 @@ class JobRow(Base):
     voice: Mapped[str] = mapped_column(String(64), default="")
     language: Mapped[str] = mapped_column(String(8), default="")
     attempts: Mapped[int] = mapped_column(Integer, default=0)
+    #: Cuándo se sirvió por última vez su salida.
+    #:
+    #: NO dispara el borrado: el reproductor pide el archivo por rangos y lo
+    #: vuelve a pedir durante la escucha, así que borrar al servir cortaría el
+    #: audio a media frase. Sirve para que el recolector sepa qué se ha llevado
+    #: ya alguien y pueda soltarlo antes que lo que nadie ha tocado.
+    downloaded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
     )

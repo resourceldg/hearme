@@ -57,6 +57,18 @@ class Settings(BaseSettings):
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2:3b"  # 3B cuantizado: modesto en recursos, suficiente
 
+    # --- Almacenamiento ---
+    #: Espacio máximo para artefactos (audio y subidas), en MB. 0 = sin límite.
+    #:
+    #: HearMe fabrica bibliotecas, no las guarda: el audio vive aquí de paso
+    #: hasta que quien lo pidió se lo lleva. Este presupuesto es el tamaño de ese
+    #: buffer, y lo fija quien despliega, no quien dona: repartir capacidad por
+    #: capacidad de pago daría menos a quien más lo necesita.
+    #:
+    #: El conocimiento —reputación, reglas, historial— NO cuenta aquí y nunca se
+    #: recolecta. Ocupa kilobytes y es lo único irrecuperable.
+    storage_budget_mb: int = 2048
+
     # --- Ejecución ---
     max_workers: int = 0  # 0 -> derivado del hardware
     api_host: str = "127.0.0.1"
