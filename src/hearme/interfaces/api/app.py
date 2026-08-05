@@ -24,7 +24,11 @@ from pydantic import BaseModel, Field
 from hearme import __version__
 from hearme.application.event_bus import bus
 from hearme.application.jobs import JobQueue, WorkerPool
-from hearme.application.language import detect_language
+from hearme.application.language import (
+    UnknownLanguage,
+    detect_language,
+    normalize_language,
+)
 from hearme.application.pipeline import ConversionPipeline, ConversionRequest
 from hearme.application.plugins import plugins
 from hearme.application.study import StudyService
@@ -400,6 +404,18 @@ async def convert(
         parsed = ConversionOptions(**json.loads(options))
     except (json.JSONDecodeError, TypeError, ValueError) as exc:
         raise HTTPException(400, f"Opciones inválidas: {exc}") from exc
+
+    # Los idiomas se normalizan en la puerta: «francés», «French» y «fr» son lo
+    # mismo, y llegaban tal cual al traductor produciendo «Ningún traductor cubre
+    # es->frances», un mensaje que no ayudaba a ver que el problema era la palabra.
+    for campo in ("language", "target_language"):
+        crudo = getattr(parsed, campo)
+        if not crudo:
+            continue
+        try:
+            setattr(parsed, campo, normalize_language(crudo))
+        except UnknownLanguage as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     unknown = [f for f in parsed.formats if f not in plugins.exporters]
     if unknown:

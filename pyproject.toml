@@ -49,7 +49,14 @@ tts-kokoro = ["kokoro>=0.9", "soundfile>=0.12", "numpy>=1.26"]
 # XTTS-v2: licencia CPML NO COMERCIAL. Opt-in consciente.
 tts-xtts = ["coqui-tts>=0.25"]
 # --- Traducción ---
-translate = ["ctranslate2>=4.5", "transformers>=4.46", "sentencepiece>=0.2"]
+# `torch` va aquí porque el traductor lo usa de verdad: marian.py llama a
+# `torch.inference_mode()` y carga los modelos con transformers. Antes el extra
+# declaraba `ctranslate2`, que NO se usa en ninguna parte del código, y omitía
+# torch: instalar el extra completo seguía dando «No module named 'torch'».
+#
+# En la imagen Docker se instala la rueda de CPU (ver docker/Dockerfile): la
+# variante por defecto arrastra CUDA y ~2,5 GB que un servidor sin GPU no usa.
+translate = ["transformers>=4.46", "sentencepiece>=0.2", "torch>=2.4"]
 # --- OCR (requiere binarios del sistema: tesseract-ocr, ghostscript) ---
 ocr = ["ocrmypdf>=16.6"]
 # --- Extra AGPL, nunca importado por el núcleo ---

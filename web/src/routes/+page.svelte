@@ -83,6 +83,24 @@
 		target_language: null
 	});
 
+	/**
+	 * Idiomas ofrecidos, con nombre legible.
+	 *
+	 * Antes esto era un campo de texto libre con el marcador «es, en, fr…».
+	 * Escribir «francés» era lo natural y producía «Ningún traductor cubre
+	 * es->frances»: un error incomprensible por un campo que no debería haber
+	 * admitido texto. El backend además normaliza, porque la API es pública.
+	 */
+	const LANGUAGES: [string, string][] = [
+		['es', 'Español'], ['en', 'Inglés'], ['fr', 'Francés'], ['de', 'Alemán'],
+		['it', 'Italiano'], ['pt', 'Portugués'], ['ca', 'Catalán'], ['nl', 'Neerlandés'],
+		['pl', 'Polaco'], ['ru', 'Ruso'], ['uk', 'Ucraniano'], ['tr', 'Turco'],
+		['sv', 'Sueco'], ['da', 'Danés'], ['no', 'Noruego'], ['fi', 'Finés'],
+		['el', 'Griego'], ['cs', 'Checo'], ['ro', 'Rumano'], ['hu', 'Húngaro'],
+		['ar', 'Árabe'], ['zh', 'Chino'], ['ja', 'Japonés'], ['hi', 'Hindi'],
+		['vi', 'Vietnamita'], ['fa', 'Persa']
+	];
+
 	const AUDIO_FORMATS = ['m4b', 'mp3'];
 	const TEXT_FORMATS = ['markdown', 'txt', 'json', 'epub'];
 
@@ -552,28 +570,38 @@
 
 					<label class="field">
 						<span>Idioma del documento</span>
-						<input
-							type="text"
-							placeholder="se detecta solo"
+						<select
 							value={options.language ?? ''}
-							oninput={(e) => (options.language = e.currentTarget.value || null)}
-						/>
+							onchange={(e) => (options.language = e.currentTarget.value || null)}
+						>
+							<option value="">Detectar automáticamente</option>
+							{#each LANGUAGES as [code, nombre] (code)}
+								<option value={code}>{nombre}</option>
+							{/each}
+						</select>
 					</label>
 
 					<label class="field">
-						<span>Traducir a</span>
-						<input
-							type="text"
-							placeholder={translationAvailable ? 'es, en, fr…' : 'no disponible'}
+						<span>Escuchar en</span>
+						<select
 							disabled={!translationAvailable}
 							value={options.target_language ?? ''}
-							oninput={(e) => (options.target_language = e.currentTarget.value || null)}
-						/>
-						{#if !translationAvailable}
-							<span class="field-note">
+							onchange={(e) => (options.target_language = e.currentTarget.value || null)}
+						>
+							<option value="">El mismo del documento</option>
+							{#each LANGUAGES as [code, nombre] (code)}
+								<option value={code}>{nombre}</option>
+							{/each}
+						</select>
+						<span class="field-note">
+							{#if !translationAvailable}
 								Este despliegue no incluye traducción. Ver el aviso de arriba.
-							</span>
-						{/if}
+							{:else if options.target_language}
+								Se traducirá antes de narrar.
+							{:else}
+								Sin traducción: se narra tal cual está escrito.
+							{/if}
+						</span>
 					</label>
 				</div>
 			</Disclosure>
@@ -953,8 +981,7 @@
 		letter-spacing: 0.06em;
 	}
 
-	select,
-	input[type='text'] {
+	select {
 		min-height: var(--target-min);
 		padding: var(--space-2) var(--space-3);
 		background: var(--surface);
@@ -963,8 +990,7 @@
 		border-radius: var(--radius);
 		font-size: var(--font-sm);
 	}
-	select:hover,
-	input[type='text']:hover {
+	select:hover {
 		border-color: var(--accent);
 	}
 

@@ -31,7 +31,14 @@ ARG HEARME_EXTRAS=documents,tts-piper,translate
 COPY pyproject.toml README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv /opt/venv && \
-    VIRTUAL_ENV=/opt/venv uv pip install ".[${HEARME_EXTRAS}]"
+    VIRTUAL_ENV=/opt/venv uv pip install \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        --index-strategy unsafe-best-match \
+        ".[${HEARME_EXTRAS}]"
+
+# Nota sobre torch: el índice de CPU de PyTorch se añade arriba a propósito. La
+# rueda por defecto de PyPI arrastra las bibliotecas de CUDA —unos 2,5 GB— que
+# un servidor sin acelerador no llega a usar nunca. La de CPU ronda los 200 MB.
 
 COPY src ./src
 # Instalación normal, NO editable, y es importante.
