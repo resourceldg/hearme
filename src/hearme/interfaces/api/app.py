@@ -24,14 +24,25 @@ from pydantic import BaseModel, Field
 from hearme import __version__
 from hearme.application.event_bus import bus
 from hearme.application.jobs import JobQueue, WorkerPool
+from hearme.application.language import detect_language
 from hearme.application.pipeline import ConversionPipeline, ConversionRequest
 from hearme.application.plugins import plugins
 from hearme.application.study import StudyService
 from hearme.config import settings
-from hearme.domain.models import JobStatus, NarrationStyle, ReadingMode
+from hearme.domain.models import JobStatus, NarrationStyle, ReadingMode, Utterance
 from hearme.infrastructure.hardware import detect
 from hearme.infrastructure.persistence.database import dispose, init_db
 from hearme.narration.adapters import capabilities_for
+from hearme.narration.plan import (
+    DocumentAnalysis,
+    ListeningPlan,
+    estimate_minutes,
+    recommend,
+    suggest_style,
+)
+from hearme.narration.plan import validate as validate_plan_domain
+from hearme.narration.voices import Gender, build_catalog, sample_text_for
+from hearme.privacy.crypto import keyed_digest, random_token
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +112,32 @@ def _store_upload(source: BinaryIO, target: Path) -> None:
     """Vuelca la subida a disco. Se ejecuta en un hilo, nunca en el event loop."""
     with target.open("wb") as handle:
         shutil.copyfileobj(source, handle, length=1 << 20)
+
+
+class ListeningPlanIn(BaseModel):
+    """Los seis conceptos, explícitos y separados.
+
+    `needs_translation` no está: se deriva de que los dos idiomas difieran. Si
+    fuera un campo, existirían estados incoherentes —«traducir» marcado con los
+    dos idiomas iguales— y alguien tendría que resolverlos.
+    """
+
+    document_language: str = ""
+    playback_language: str = ""
+    voice: str | None = None
+    style: NarrationStyle = NarrationStyle.NEUTRAL
+    engine: str | None = None
+    keep_original: bool = False
+
+    def to_domain(self) -> ListeningPlan:
+        return ListeningPlan(
+            document_language=self.document_language,
+            playback_language=self.playback_language,
+            voice=self.voice,
+            style=self.style,
+            engine=self.engine,
+            keep_original=self.keep_original,
+        )
 
 
 class SystemInfo(BaseModel):
@@ -189,12 +226,164 @@ async def system_info() -> SystemInfo:
 
 
 @app.get("/api/voices")
-async def list_voices(language: str = "es") -> dict[str, list[str]]:
-    result: dict[str, list[str]] = {}
-    for engine in plugins.tts:
-        if await engine.is_available():
-            result[engine.name] = list(await engine.voices(language))
-    return result
+async def list_voices(
+    language: str | None = None,
+    gender: str | None = None,
+    engine: str | None = None,
+) -> dict[str, Any]:
+    """Catálogo de voces con metadatos, para poder elegir sin adivinar.
+
+    Antes devolvía listas de identificadores (`ef_dora`, `es_ES-sharvard-medium`),
+    que no responden a lo que pregunta quien elige: de dónde suena, si es de
+    hombre o mujer, cuál va a sonar mejor. Ahora cada voz viene descrita.
+    """
+    catalogo = await build_catalog(plugins.tts)
+
+    if language or gender or engine:
+        genero = Gender(gender) if gender in {g.value for g in Gender} else None
+        voces = catalogo.filter(
+            language=language,
+            gender=genero,
+            engine=engine,
+            allow_non_commercial=settings.allow_non_commercial_models,
+        )
+        return {"voices": [v.to_dict() for v in voces], "total": len(voces)}
+
+    return {
+        "by_language": catalogo.grouped_by_language(),
+        "languages": catalogo.languages(),
+        "total": len(catalogo),
+    }
+
+
+@app.post("/api/voices/{engine_name}/{voice_id}/sample")
+async def voice_sample(engine_name: str, voice_id: str, language: str = "es") -> FileResponse:
+    """Genera una muestra corta de una voz.
+
+    Escuchar antes de elegir es la diferencia entre decidir y apostar. La muestra
+    es de dos frases: suficiente para juzgar, lo bastante rápida para no
+    desincentivar la comparación entre varias.
+    """
+    motor = next((e for e in plugins.tts if e.name == engine_name), None)
+    if motor is None or not await motor.is_available():
+        raise HTTPException(404, f"El motor '{engine_name}' no está disponible")
+
+    if hasattr(motor, "language"):
+        motor.language = language
+    if preparar := getattr(motor, "prepare", None):
+        await preparar(language)
+
+    settings.ensure_dirs()
+    destino = settings.cache_dir / "samples" / engine_name
+    destino.mkdir(parents=True, exist_ok=True)
+
+    # La muestra se cachea: comparar seis voces no debería sintetizar seis veces
+    # cada vez que alguien vuelve a abrir el selector.
+    marca = keyed_digest(voice_id.encode(), sample_text_for(language))[:16]
+    cacheada = destino / f"{marca}.wav"
+    if not cacheada.exists():
+        utterance = Utterance(
+            text=sample_text_for(language),
+            order=0,
+            chapter_id="sample",
+            block_id="sample",
+        )
+        try:
+            segmento = await motor.synthesize(utterance, voice=voice_id, out_dir=destino)
+        except Exception as exc:
+            logger.warning("no se pudo generar la muestra de %s: %s", voice_id, exc)
+            raise HTTPException(
+                503,
+                f"No se pudo generar la muestra de esta voz. Puede que el modelo "
+                f"aún se esté descargando; inténtalo en unos segundos. ({exc})",
+            ) from exc
+        segmento.path.replace(cacheada)
+
+    return FileResponse(cacheada, media_type="audio/wav", filename=f"{voice_id}.wav")
+
+
+@app.post("/api/analyze")
+async def analyze(
+    file: Annotated[UploadFile, File()],
+    interface_language: str = "es",
+) -> dict[str, Any]:
+    """Analiza un documento **sin convertirlo** y propone un plan de escucha.
+
+    Es lo que permite que el asistente sugiera algo con fundamento en vez de
+    preguntar a ciegas. Cuesta segundos, no los minutos de una conversión, y el
+    documento se descarta al terminar: no se encola nada.
+    """
+    if not file.filename:
+        raise HTTPException(400, "Falta el nombre del archivo")
+
+    settings.ensure_dirs()
+    temporal = settings.cache_dir / f"analisis-{random_token(8)}{Path(file.filename).suffix}"
+    if plugins.parser_for(temporal.suffix) is None:
+        raise HTTPException(415, f"No hay parser para '{temporal.suffix}'")
+
+    try:
+        await anyio.to_thread.run_sync(_store_upload, file.file, temporal)
+        documento = await ConversionPipeline().parse(temporal)
+    except Exception as exc:
+        logger.exception("fallo al analizar el documento")
+        raise HTTPException(422, f"No se pudo leer el documento: {exc}") from exc
+    finally:
+        # Se analiza y se olvida: quien solo quería una sugerencia no ha pedido
+        # que guardemos su documento.
+        temporal.unlink(missing_ok=True)
+
+    muestra = "\n".join(c.text for c in documento.chapters[:3])
+    idioma = documento.meta.language or detect_language(muestra)
+    # La detección no expone confianza, así que se aproxima por cuánto texto se
+    # ha visto: con dos párrafos, cualquier detector acierta poco.
+    confianza = 0.9 if len(muestra) > 2000 else 0.6 if len(muestra) > 400 else 0.3
+
+    analisis = DocumentAnalysis(
+        detected_language=idioma,
+        confidence=confianza,
+        chapters=len(documento.chapters),
+        characters=documento.char_count,
+        title=documento.meta.title,
+        estimated_minutes=estimate_minutes(documento.char_count),
+    )
+
+    catalogo = await build_catalog(plugins.tts)
+    traduccion = bool(plugins.translators.names())
+    recomendaciones = recommend(
+        detected_language=idioma,
+        detection_confidence=confianza,
+        catalog=catalogo,
+        translation_available=traduccion,
+        interface_language=interface_language,
+    )
+    recomendaciones["style"] = suggest_style(documento.meta.title)
+
+    return {
+        "analysis": analisis.to_dict(),
+        "recommendations": {k: v.to_dict() for k, v in recomendaciones.items()},
+        "translation_available": traduccion,
+        "languages_with_voice": catalogo.languages(),
+    }
+
+
+@app.post("/api/plan/validate")
+async def validate_plan(plan: ListeningPlanIn) -> dict[str, Any]:
+    """Comprueba un plan antes de convertir y devuelve problemas accionables.
+
+    Detectar aquí que falta el traductor o que la voz es de otro idioma ahorra
+    esperar el parseo completo de un libro para descubrirlo al final.
+    """
+    catalogo = await build_catalog(plugins.tts)
+    problemas = validate_plan_domain(
+        plan.to_domain(),
+        catalog=catalogo,
+        translation_available=bool(plugins.translators.names()),
+    )
+    return {
+        "valid": not problemas,
+        "problems": [p.to_dict() for p in problemas],
+        "summary": plan.to_domain().describe(),
+    }
 
 
 @app.post("/api/convert", status_code=202)

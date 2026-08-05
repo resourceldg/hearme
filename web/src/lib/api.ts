@@ -74,6 +74,69 @@ export interface SystemInfo {
 	warnings: string[];
 }
 
+/**
+ * Una voz con los metadatos que hacen falta para elegirla.
+ * El backend los deriva de los nombres; no se inventan.
+ */
+export interface Voice {
+	id: string;
+	engine: string;
+	language: string;
+	display_name: string;
+	gender: 'female' | 'male' | 'neutral' | 'unknown';
+	accent: string;
+	region: string;
+	quality: 'low' | 'medium' | 'high';
+	naturalness: number;
+	non_commercial: boolean;
+	description: string;
+	is_fast: boolean;
+}
+
+/** Sugerencia del sistema. Siempre con motivo visible: nunca se aplica a ciegas. */
+export interface Recommendation {
+	value: string;
+	reason: string;
+	confidence: number;
+	confident: boolean;
+}
+
+export interface DocumentAnalysis {
+	detected_language: string;
+	confidence: number;
+	chapters: number;
+	characters: number;
+	title: string;
+	estimated_minutes: number;
+}
+
+export interface AnalysisResult {
+	analysis: DocumentAnalysis;
+	recommendations: Record<string, Recommendation>;
+	translation_available: boolean;
+	languages_with_voice: string[];
+}
+
+/** Un impedimento con la acción concreta que lo resuelve. */
+export interface PlanProblem {
+	field: string;
+	message: string;
+	action: string;
+}
+
+/**
+ * Los seis conceptos, separados.
+ * `needs_translation` no existe como campo: se deriva de que los idiomas difieran.
+ */
+export interface ListeningPlan {
+	document_language: string;
+	playback_language: string;
+	voice: string | null;
+	style: string;
+	engine: string | null;
+	keep_original: boolean;
+}
+
 export interface ConversionOptions {
 	mode?: string;
 	formats?: string[];
@@ -118,6 +181,37 @@ export async function convert(
 	body.append('options', JSON.stringify(options));
 	return request('/api/convert', { method: 'POST', body });
 }
+
+/** Catálogo agrupado por idioma, ya ordenado por el backend. */
+export const getVoices = () =>
+	request<{ by_language: Record<string, Voice[]>; languages: string[]; total: number }>(
+		'/api/voices'
+	);
+
+export const getVoicesFor = (language: string) =>
+	request<{ voices: Voice[]; total: number }>(
+		`/api/voices?language=${encodeURIComponent(language)}`
+	);
+
+/** URL de la muestra. Se cachea en el servidor: comparar voces no re-sintetiza. */
+export const voiceSampleUrl = (engine: string, voiceId: string, language: string) =>
+	`${API_URL}/api/voices/${encodeURIComponent(engine)}/${encodeURIComponent(voiceId)}` +
+	`/sample?language=${encodeURIComponent(language)}`;
+
+/** Analiza sin convertir ni encolar nada. El documento se descarta al terminar. */
+export async function analyzeDocument(file: File): Promise<AnalysisResult> {
+	const body = new FormData();
+	body.append('file', file);
+	return request('/api/analyze', { method: 'POST', body });
+}
+
+/** Comprueba el plan antes de gastar minutos de conversión. */
+export const validatePlan = (plan: Partial<ListeningPlan>) =>
+	request<{ valid: boolean; problems: PlanProblem[]; summary: string }>('/api/plan/validate', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(plan)
+	});
 
 export const downloadUrl = (jobId: string, index: number) =>
 	`${API_URL}/api/jobs/${jobId}/download/${index}`;

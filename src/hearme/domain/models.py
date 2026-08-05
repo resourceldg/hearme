@@ -65,12 +65,20 @@ class ReadingMode(StrEnum):
 
 
 class NarrationStyle(StrEnum):
-    """Perfil prosódico. Ajusta pausas, velocidad y tratamiento de puntuación."""
+    """Perfil prosódico. Ajusta pausas, velocidad y tratamiento de puntuación.
 
+    Añadir un estilo obliga a darle entrada en las tablas de
+    `hearme.narration.director`: sin ella, elegirlo reventaría al trocear. El
+    test `test_todos_los_estilos_tienen_prosodia` lo comprueba.
+    """
+
+    NEUTRAL = "neutral"
     NOVEL = "novel"
     POETRY = "poetry"
     TECHNICAL = "technical"
-    NEUTRAL = "neutral"
+    ACADEMIC = "academic"
+    CHILDREN = "children"
+    LECTURE = "lecture"
 
 
 class JobStatus(StrEnum):

@@ -24,6 +24,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import Disclosure from '$lib/components/Disclosure.svelte';
+	import SetupAssistant from '$lib/components/SetupAssistant.svelte';
+	import VoiceCenter from '$lib/components/VoiceCenter.svelte';
 	import ExperiencePanel from '$lib/components/ExperiencePanel.svelte';
 	import Segmented from '$lib/components/Segmented.svelte';
 	import { preferences } from '$lib/experience/preferences.svelte';
@@ -35,6 +37,8 @@
 		getSystem,
 		listJobs,
 		subscribeToJob,
+		analyzeDocument,
+		type AnalysisResult,
 		type ConversionOptions,
 		type Job,
 		type SystemInfo
@@ -48,7 +52,19 @@
 	let uploadingNow = $state('');
 	let uploadedCount = $state(0);
 	let panelOpen = $state(false);
+	let voiceCenterOpen = $state(false);
 	let pending = $state<File[]>([]);
+
+	/**
+	 * Documento en el asistente.
+	 *
+	 * El flujo pasa a ser: soltar -> analizar -> confirmar el plan -> convertir.
+	 * Analizar cuesta segundos y evita el error caro: descubrir a los diez
+	 * minutos que la voz era de otro idioma o que no había traductor.
+	 */
+	let assistantFile = $state<File | null>(null);
+	let assistantAnalysis = $state<AnalysisResult | null>(null);
+	let analyzing = $state(false);
 
 	/** Anuncios para lectores de pantalla. WCAG 4.1.3 (Status Messages). */
 	let announcement = $state('');
@@ -125,6 +141,51 @@
 		const añadidos = nuevos.filter((f) => !yaEsta(f));
 		pending = [...pending, ...añadidos];
 		announcement = `${añadidos.length} documento(s) en la lista. ${pending.length} en total.`;
+
+		// Con un solo documento se abre el asistente: es donde se decide bien.
+		// Con varios no, porque un plan por documento sería una entrevista.
+		if (pending.length === 1 && añadidos.length === 1) openAssistant(añadidos[0]);
+	}
+
+	async function openAssistant(file: File) {
+		analyzing = true;
+		assistantFile = file;
+		assistantAnalysis = null;
+		announcement = 'Analizando el documento para proponer una configuración.';
+		try {
+			assistantAnalysis = await analyzeDocument(file);
+		} catch (e) {
+			// Que falle el análisis no puede impedir convertir: se sigue con las
+			// opciones manuales, que es exactamente lo que había antes.
+			assistantFile = null;
+			error = `No se pudo analizar el documento: ${e instanceof Error ? e.message : e}. Puedes configurarlo a mano abajo.`;
+		} finally {
+			analyzing = false;
+		}
+	}
+
+	async function startFromAssistant(plan: {
+		document_language: string;
+		playback_language: string;
+		voice: string | null;
+		style: string;
+		keep_original: boolean;
+	}) {
+		const file = assistantFile;
+		if (!file) return;
+		// El plan usa los seis conceptos; el pipeline sigue hablando de
+		// language/target_language. La conversión se hace aquí, a la vista.
+		options = {
+			...options,
+			language: plan.document_language || null,
+			target_language:
+				plan.playback_language !== plan.document_language ? plan.playback_language : null,
+			voice: plan.voice,
+			style: plan.style
+		};
+		assistantFile = null;
+		assistantAnalysis = null;
+		await convertPending();
 	}
 
 	function unqueue(file: File) {
@@ -239,6 +300,23 @@
 			<button
 				type="button"
 				class="btn ghost"
+				onclick={() => (voiceCenterOpen = true)}
+				aria-haspopup="dialog"
+				aria-expanded={voiceCenterOpen}
+			>
+				<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none">
+					<path
+						d="M8 2v12M4.5 5v6M11.5 5v6M1.5 7v2M14.5 7v2"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+					/>
+				</svg>
+				Voces
+			</button>
+			<button
+				type="button"
+				class="btn ghost"
 				onclick={() => (panelOpen = true)}
 				aria-haspopup="dialog"
 				aria-expanded={panelOpen}
@@ -337,7 +415,34 @@
 			{/if}
 		</section>
 
-		<!-- 2 · Decidir cómo se lee -->
+		{#if analyzing}
+			<p class="analyzing" role="status">
+				<span class="spinner" aria-hidden="true"></span>
+				Analizando el documento para proponerte una configuración…
+			</p>
+		{/if}
+
+		<!-- 2 · Confirmar el plan. El asistente se remonta por documento: sus
+		     valores son puntos de partida editables, no un espejo del análisis. -->
+		{#if assistantFile && assistantAnalysis}
+			{#key assistantFile.name}
+				<SetupAssistant
+					file={assistantFile}
+					analysis={assistantAnalysis}
+					favorites={preferences.current.favoriteVoices}
+					defaultVoices={preferences.current.defaultVoices}
+					onstart={startFromAssistant}
+					oncancel={() => {
+						assistantFile = null;
+						assistantAnalysis = null;
+					}}
+					ontogglefavorite={(v) => preferences.toggleFavorite(v)}
+				/>
+			{/key}
+		{/if}
+
+		<!-- 3 · Opciones manuales. Quedan para varios documentos a la vez y para
+		     quien prefiera no pasar por el asistente. -->
 		<section class="options" aria-label="Opciones de conversión">
 			<Segmented
 				legend="Qué quieres obtener"
@@ -585,6 +690,7 @@
 </div>
 
 <ExperiencePanel open={panelOpen} onclose={() => (panelOpen = false)} />
+<VoiceCenter open={voiceCenterOpen} onclose={() => (voiceCenterOpen = false)} />
 
 <style>
 	.shell {
@@ -756,6 +862,31 @@
 	}
 
 	/* --- Opciones ----------------------------------------------------------- */
+
+	.analyzing {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		margin: 0;
+		padding: var(--space-4);
+		background: var(--accent-subtle);
+		border-radius: var(--radius);
+		font-size: var(--font-sm);
+	}
+	.spinner {
+		width: 14px;
+		height: 14px;
+		border: 2px solid var(--border-strong);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 0.7s linear infinite;
+		flex-shrink: 0;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
 
 	.options {
 		display: grid;

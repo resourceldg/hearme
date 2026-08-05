@@ -59,6 +59,16 @@ export interface Preferences {
 	playbackRate: number;
 	/** Perfil aplicado por última vez, solo para poder mostrarlo como activo. */
 	profile: string | null;
+	/**
+	 * Voces marcadas como favoritas. Se guardan aquí, en local, por lo mismo que
+	 * el resto: qué voz elige alguien puede revelar su procedencia o su lengua
+	 * materna, y eso no tiene por qué salir de su navegador.
+	 */
+	favoriteVoices: string[];
+	/** Voz por defecto para cada idioma. El asistente la respeta sin preguntar. */
+	defaultVoices: Record<string, string>;
+	/** Estilo narrativo preferido. Punto de partida, no imposición. */
+	defaultStyle: string;
 }
 
 export const DEFAULTS: Preferences = {
@@ -74,7 +84,10 @@ export const DEFAULTS: Preferences = {
 	// cambiarlo; quien no, se habría ido antes de encontrar el botón entre veinte.
 	expertise: 'guided',
 	playbackRate: 1,
-	profile: null
+	profile: null,
+	favoriteVoices: [],
+	defaultVoices: {},
+	defaultStyle: 'neutral'
 };
 
 /** Límites. Fuera de ellos la interfaz deja de ser usable, y eso no ayuda a nadie. */
@@ -108,7 +121,13 @@ function sanitize(raw: Partial<Preferences>): Preferences {
 		focusWidth: clamp(Number(raw.focusWidth) || DEFAULTS.focusWidth, LIMITS.focusWidth),
 		expertise: oneOf(raw.expertise, ['guided', 'full'] as const, DEFAULTS.expertise),
 		playbackRate: clamp(Number(raw.playbackRate) || DEFAULTS.playbackRate, LIMITS.playbackRate),
-		profile: typeof raw.profile === 'string' ? raw.profile : null
+		profile: typeof raw.profile === 'string' ? raw.profile : null,
+		favoriteVoices: Array.isArray(raw.favoriteVoices)
+			? raw.favoriteVoices.filter((v): v is string => typeof v === 'string')
+			: [],
+		defaultVoices:
+			raw.defaultVoices && typeof raw.defaultVoices === 'object' ? { ...raw.defaultVoices } : {},
+		defaultStyle: typeof raw.defaultStyle === 'string' ? raw.defaultStyle : DEFAULTS.defaultStyle
 	};
 }
 
@@ -222,6 +241,27 @@ class PreferenceStore {
 		this.apply();
 	}
 
+	/** Alterna una voz favorita. No toca el perfil: no es un ajuste de apariencia. */
+	toggleFavorite(voiceId: string): void {
+		const favoritas = this.current.favoriteVoices;
+		this.current = {
+			...this.current,
+			favoriteVoices: favoritas.includes(voiceId)
+				? favoritas.filter((v) => v !== voiceId)
+				: [...favoritas, voiceId]
+		};
+		this.persist();
+	}
+
+	/** Fija la voz por defecto de un idioma, o la quita si se pasa null. */
+	setDefaultVoice(language: string, voiceId: string | null): void {
+		const mapa = { ...this.current.defaultVoices };
+		if (voiceId) mapa[language] = voiceId;
+		else delete mapa[language];
+		this.current = { ...this.current, defaultVoices: mapa };
+		this.persist();
+	}
+
 	reset(): void {
 		this.current = { ...DEFAULTS };
 		this.persist();
@@ -252,7 +292,7 @@ class PreferenceStore {
 		root.style.setProperty('--focus-width', `${p.focusWidth}px`);
 	}
 
-	private persist(): void {
+	persist(): void {
 		if (!browser) return;
 		try {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(this.current));

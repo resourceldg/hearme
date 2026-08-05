@@ -223,6 +223,7 @@ prioridad ni influencia, y no donar no quita nada.** Reglas completas en
 | [Community Narration Training](docs/COMMUNITY-NARRATION-TRAINING.md) | Cómo mejora la narración con la comunidad |
 | [Privacidad, seguridad y confianza](docs/PRIVACY-SECURITY.md) | Modelo de amenazas y decisiones de diseño |
 | [Assistive Technology First](docs/ASSISTIVE-TECHNOLOGY.md) | Lectores de pantalla, teclado y validación con personas |
+| [Onboarding y voz](docs/ONBOARDING-VOICE.md) | Los seis conceptos de la escucha y el asistente de configuración |
 | [Sistema de diseño](docs/DESIGN-SYSTEM.md) | Experiencia adaptativa y accesibilidad verificada |
 | [Licencias](docs/LICENSING.md) | Qué está licenciado cómo, y qué no |
 | [Análisis comparativo](docs/ANALISIS-COMPARATIVO.md) | Por qué cada dependencia y no otra |

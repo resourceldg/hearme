@@ -75,6 +75,28 @@ _PAUSES: dict[NarrationStyle, dict[BlockKind, int]] = {
         BlockKind.LIST_ITEM: 400,
         BlockKind.CODE: 500,
     },
+    NarrationStyle.ACADEMIC: {
+        # La cita y la nota piden aire: son la voz de otra persona dentro del texto.
+        BlockKind.HEADING: 1000,
+        BlockKind.PARAGRAPH: 500,
+        BlockKind.QUOTE: 800,
+        BlockKind.LIST_ITEM: 450,
+        BlockKind.FOOTNOTE: 700,
+    },
+    NarrationStyle.CHILDREN: {
+        # Pausas amplias para dejar sitio a la imaginación y a las preguntas.
+        BlockKind.HEADING: 1400,
+        BlockKind.PARAGRAPH: 700,
+        BlockKind.QUOTE: 800,
+        BlockKind.LIST_ITEM: 600,
+    },
+    NarrationStyle.LECTURE: {
+        # Cadencia de exposición oral: el encabezado marca el cambio de tema.
+        BlockKind.HEADING: 1600,
+        BlockKind.PARAGRAPH: 550,
+        BlockKind.QUOTE: 600,
+        BlockKind.LIST_ITEM: 500,
+    },
     NarrationStyle.NEUTRAL: {
         BlockKind.HEADING: 1000,
         BlockKind.PARAGRAPH: 400,
@@ -87,6 +109,10 @@ _RATES: dict[NarrationStyle, float] = {
     NarrationStyle.NOVEL: 1.0,
     NarrationStyle.POETRY: 0.88,
     NarrationStyle.TECHNICAL: 0.95,
+    # Más lento: se escucha para entender, no para avanzar.
+    NarrationStyle.ACADEMIC: 0.92,
+    NarrationStyle.CHILDREN: 0.85,
+    NarrationStyle.LECTURE: 0.95,
     NarrationStyle.NEUTRAL: 1.0,
 }
 
