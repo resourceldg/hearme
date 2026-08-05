@@ -345,3 +345,124 @@ def test_el_informe_de_limpieza_no_lleva_nombres_de_archivo(tmp_path) -> None:
     informe = release(archivo, Artifact.SOURCE).to_dict()
     assert "mi-diagnostico" not in str(informe)
     assert set(informe) == {"artifacts_removed", "bytes_freed", "failures"}
+
+
+# --- lo que SÍ se guarda, con su cuenta ---------------------------------------
+
+
+def test_el_conocimiento_nunca_es_recolectable() -> None:
+    """Es la corrección al principio anterior: la reputación no se borra.
+
+    Es lo único que la comunidad construye y no se puede rehacer. El audio se
+    regenera reconvirtiendo; una reputación perdida no vuelve.
+    """
+    from hearme.privacy.storage import COLLECTABLE, Category
+
+    assert Category.KNOWLEDGE not in COLLECTABLE
+    assert Category.MODELS not in COLLECTABLE, "descargarlos otra vez cuesta a todos"
+    assert Category.AUDIO in COLLECTABLE
+
+
+def test_el_informe_dice_cuanto_ocupa_y_cuanto_se_puede_soltar(tmp_path) -> None:
+    from hearme.privacy.storage import measure
+
+    salida = tmp_path / "output"
+    salida.mkdir()
+    (salida / "libro.m4b").write_bytes(b"x" * 4096)
+    bd = tmp_path / "hearme.db"
+    bd.write_bytes(b"x" * 1024)
+
+    informe = measure(
+        output_dir=salida,
+        uploads_dir=tmp_path / "uploads",
+        models_dir=tmp_path / "models",
+        cache_dir=tmp_path / "cache",
+        database_path=bd,
+    )
+
+    assert informe.total_bytes == 5120
+    assert informe.collectable_bytes == 4096, "la base de datos no es recolectable"
+    assert informe.knowledge_bytes == 1024
+    assert "irrecuperable" in informe.explain()
+
+
+def test_se_puede_ver_que_se_borraria_antes_de_borrarlo(tmp_path) -> None:
+    """Un botón de limpiar que no dice qué se lleva no se pulsa, y con razón."""
+    import os
+
+    from hearme.privacy.storage import plan_collection
+
+    salida = tmp_path / "output"
+    salida.mkdir()
+    viejo = salida / "viejo.m4b"
+    viejo.write_bytes(b"x" * 2048)
+    antiguo = (datetime.now(UTC) - timedelta(days=5)).timestamp()
+    os.utime(viejo, (antiguo, antiguo))
+
+    plan = plan_collection(
+        output_dir=salida,
+        uploads_dir=tmp_path / "uploads",
+        cache_dir=tmp_path / "cache",
+        keep_recent=0,
+    )
+
+    assert viejo in plan.items
+    assert plan.bytes_to_free == 2048
+    assert "conocimiento" in plan.protected
+    assert viejo.exists(), "planificar no borra nada"
+
+
+def test_lo_reciente_se_protege_aunque_se_pida_limpiar(tmp_path) -> None:
+    """Quien acaba de convertir algo lo va a descargar en unos minutos."""
+    from hearme.privacy.storage import plan_collection
+
+    salida = tmp_path / "output"
+    salida.mkdir()
+    (salida / "recien-hecho.m4b").write_bytes(b"x" * 1024)
+
+    plan = plan_collection(output_dir=salida, uploads_dir=tmp_path / "u", cache_dir=tmp_path / "c")
+    assert plan.is_empty
+
+
+def test_un_servidor_poco_usado_no_se_queda_vacio_al_limpiar(tmp_path) -> None:
+    """Sin proteger los últimos N, todo sería «antiguo» y se borraría entero."""
+    import os
+
+    from hearme.privacy.storage import plan_collection
+
+    salida = tmp_path / "output"
+    salida.mkdir()
+    antiguo = (datetime.now(UTC) - timedelta(days=30)).timestamp()
+    for n in range(8):
+        archivo = salida / f"libro{n}.m4b"
+        archivo.write_bytes(b"x" * 100)
+        os.utime(archivo, (antiguo + n, antiguo + n))
+
+    plan = plan_collection(
+        output_dir=salida, uploads_dir=tmp_path / "u", cache_dir=tmp_path / "c", keep_recent=5
+    )
+    assert len(plan.items) == 3, "los cinco más recientes se conservan"
+
+
+def test_la_limpieza_solo_borra_lo_que_el_plan_enumero(tmp_path) -> None:
+    """Garantiza que se borra lo que se enseñó, no lo aparecido después."""
+    from hearme.privacy.storage import CollectionPlan, collect
+
+    a = tmp_path / "a.m4b"
+    b = tmp_path / "b.m4b"
+    a.write_bytes(b"x" * 512)
+    b.write_bytes(b"x" * 512)
+
+    resultado = collect(CollectionPlan(items=(a,), bytes_to_free=512))
+
+    assert not a.exists()
+    assert b.exists(), "lo que no estaba en el plan no se toca"
+    assert resultado.freed_bytes == 512
+
+
+def test_los_tamanos_se_muestran_legibles() -> None:
+    from hearme.privacy.storage import human
+
+    assert human(512) == "512 B"
+    assert human(2048) == "2.0 KB"
+    assert human(5 * 1024**3) == "5.0 GB"

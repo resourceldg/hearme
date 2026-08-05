@@ -53,12 +53,12 @@ logger = logging.getLogger(__name__)
 
 _pool: WorkerPool | None = None
 
-#: Reputación acumulada en memoria.
+#: Índice de reputación en memoria, reconstruido desde la base de datos al
+#: arrancar.
 #:
-#: En memoria a propósito, de momento: persistirla exige decidir dónde vive el
-#: conocimiento compartido, y eso lo resuelve `knowledge.sync` cuando exista el
-#: servicio de sincronización. Mientras tanto es útil dentro de una sesión y no
-#: promete más de lo que puede cumplir.
+#: Las valoraciones se persisten (tabla `feedback`); la reputación se **deriva**
+#: de ellas al leer. Guardar el número calculado y no la evidencia daría una
+#: cifra que nadie puede auditar, y cambiar la fórmula obligaría a migrar.
 _reputation = ReputationIndex()
 
 
@@ -68,6 +68,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings.ensure_dirs()
     plugins.load()
     await init_db()
+
+    await _load_reputation()
 
     global _pool
     _pool = WorkerPool(size=1)
@@ -97,6 +99,45 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+async def _load_reputation() -> None:
+    """Reconstruye la reputación desde las valoraciones guardadas.
+
+    Antes vivía solo en memoria y se perdía al reiniciar. Era el error de fondo
+    del diseño anterior: la reputación **es** conocimiento, lo único que la
+    comunidad construye y no se puede rehacer.
+    """
+    from sqlalchemy import select
+
+    from hearme.infrastructure.persistence.database import FeedbackRow, session_scope
+
+    try:
+        async with session_scope() as session:
+            filas = (await session.execute(select(FeedbackRow))).scalars().all()
+    except Exception:
+        logger.exception("no se pudo cargar la reputación; se empieza vacía")
+        return
+
+    for fila in filas:
+        try:
+            _reputation.add(
+                Feedback(
+                    subject=Subject(
+                        engine=fila.engine,
+                        voice=fila.voice,
+                        style=fila.style,
+                        language=fila.language,
+                    ),
+                    stars=fila.stars,
+                    thumbs_up=fila.thumbs_up,
+                    comment=fila.comment,
+                    contributor=fila.contributor,
+                )
+            )
+        except ValueError:
+            continue  # una fila inválida no puede impedir cargar el resto
+    logger.info("reputación cargada: %d valoraciones", len(filas))
 
 
 def get_queue() -> JobQueue:
@@ -567,6 +608,28 @@ async def submit_feedback(payload: FeedbackIn) -> dict[str, Any]:
         raise HTTPException(400, str(exc)) from exc
 
     _reputation.add(valoracion)
+
+    # Se guarda la señal cruda, no la reputación: la evidencia es lo que permite
+    # auditar el número y recalcularlo si cambia la fórmula.
+    from hearme.infrastructure.persistence.database import FeedbackRow, session_scope
+    from hearme.privacy.crypto import random_token
+
+    async with session_scope() as session:
+        session.add(
+            FeedbackRow(
+                id=random_token(16),
+                engine=payload.engine,
+                voice=payload.voice,
+                style=payload.style,
+                language=payload.language,
+                stars=payload.stars,
+                thumbs_up=payload.thumbs_up,
+                comment=payload.comment,
+                tags=json.dumps([t.tag.value for t in valoracion.tags]),
+                contributor=payload.contributor,
+            )
+        )
+
     reputacion = _reputation.of(valoracion.subject)
 
     return {
@@ -596,6 +659,71 @@ async def get_reputation(
         # La sugerencia se devuelve, nunca se aplica sola.
         "suggested_adjustment": suggest_adjustment(problemas),
     }
+
+
+@app.get("/api/storage")
+async def storage_usage() -> dict[str, Any]:
+    """Cuánto ocupa el servicio, desglosado por categoría.
+
+    Está a la vista porque un número escondido se ignora hasta que el disco se
+    llena un domingo por la noche, y entonces se borra a lo bruto lo primero que
+    aparece. Solo mide: no toca nada.
+    """
+    from hearme.privacy.storage import measure
+
+    base_datos = None
+    url = settings.resolved_database_url
+    if url.startswith("sqlite"):
+        base_datos = Path(url.split("///")[-1])
+
+    informe = measure(
+        output_dir=settings.output_dir,
+        uploads_dir=settings.uploads_dir,
+        models_dir=settings.resolved_models_dir,
+        cache_dir=settings.cache_dir,
+        database_path=base_datos,
+    )
+    return informe.to_dict()
+
+
+@app.get("/api/storage/cleanup")
+async def preview_cleanup(older_than_hours: int = 24, keep_recent: int = 5) -> dict[str, Any]:
+    """Qué se liberaría, **sin borrar nada**.
+
+    Un botón de limpiar que no dice qué se lleva por delante no se pulsa, y con
+    razón. Esto es lo que se enseña antes de pedir confirmación.
+    """
+    from hearme.privacy.storage import plan_collection
+
+    plan = plan_collection(
+        output_dir=settings.output_dir,
+        uploads_dir=settings.uploads_dir,
+        cache_dir=settings.cache_dir,
+        older_than_hours=older_than_hours,
+        keep_recent=keep_recent,
+    )
+    return plan.to_dict()
+
+
+@app.post("/api/storage/cleanup")
+async def run_cleanup(older_than_hours: int = 24, keep_recent: int = 5) -> dict[str, Any]:
+    """Libera espacio. El conocimiento no se toca nunca.
+
+    Se recalcula el plan y se ejecuta ese mismo: así se borra exactamente lo
+    enumerado, y nunca algo aparecido entre la previsualización y este momento.
+    """
+    from hearme.privacy.storage import collect, plan_collection
+
+    plan = plan_collection(
+        output_dir=settings.output_dir,
+        uploads_dir=settings.uploads_dir,
+        cache_dir=settings.cache_dir,
+        older_than_hours=older_than_hours,
+        keep_recent=keep_recent,
+    )
+    resultado = collect(plan)
+    logger.info("limpieza solicitada: %s", resultado.explain())
+    return {"planned": plan.to_dict(), "result": resultado.to_dict()}
 
 
 @app.post("/api/study/{job_id}")

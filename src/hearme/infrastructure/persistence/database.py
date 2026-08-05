@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Float, Integer, String, Text, event
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -93,6 +93,62 @@ class DocumentRow(Base):
     payload: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
+
+
+class FeedbackRow(Base):
+    """Una valoración, tal como se emitió.
+
+    Se guarda la señal cruda —estrellas, pulgar, comentario— y no la reputación
+    calculada. La reputación se deriva al leer, por dos motivos: cambiar la
+    fórmula no obliga a migrar nada, y siempre se puede reconstruir desde la
+    evidencia. Una reputación almacenada sin sus valoraciones sería un número
+    que nadie puede auditar.
+
+    El comentario se conserva íntegro junto a las etiquetas extraídas: las
+    etiquetas son una ayuda, el original es la verdad.
+    """
+
+    __tablename__ = "feedback"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    # Sujeto valorado: una configuración, nunca una obra.
+    engine: Mapped[str] = mapped_column(String(32), index=True)
+    voice: Mapped[str] = mapped_column(String(64), default="", index=True)
+    style: Mapped[str] = mapped_column(String(16), default="")
+    language: Mapped[str] = mapped_column(String(8), default="", index=True)
+    # Señales. Todas opcionales; al menos una tiene que venir.
+    stars: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    thumbs_up: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    tags: Mapped[str] = mapped_column(Text, default="[]")
+    contributor: Mapped[str] = mapped_column(String(64), default="local", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
+
+
+class ContributorRow(Base):
+    """Reputación de quien aporta, medida y no declarada.
+
+    Es la otra mitad del sistema: sin ella, todas las valoraciones pesarían lo
+    mismo y bastaría con insistir para torcer el catálogo. La fiabilidad sale de
+    ítems de control, igual que en `narration.contributions`.
+    """
+
+    __tablename__ = "contributors"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    reliability: Mapped[float] = mapped_column(Float, default=0.25)
+    feedback_given: Mapped[int] = mapped_column(Integer, default=0)
+    control_hits: Mapped[int] = mapped_column(Integer, default=0)
+    control_total: Mapped[int] = mapped_column(Integer, default=0)
+    accredited: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 
 
