@@ -75,6 +75,8 @@
 	const doneJobs = $derived(jobs.filter((j) => j.status === 'completed'));
 	/** Con «Todo», las opciones nacen abiertas en vez de esconderse cada vez. */
 	const showAll = $derived(preferences.current.expertise === 'full');
+	/** Un campo que no puede funcionar debe verse deshabilitado, no fallar al usarlo. */
+	const translationAvailable = $derived((system?.translators.length ?? 0) > 0);
 
 	// --- datos -----------------------------------------------------------------
 
@@ -399,9 +401,16 @@
 
 			<Disclosure
 				summary="Idioma y motor de voz"
-				hint={options.language || 'detección automática'}
-				open={showAll}
+				hint={options.target_language
+					? `traduce a ${options.target_language}`
+					: options.language || 'detección automática'}
+				open={showAll || options.mode === 'translate'}
 			>
+				{#if options.mode === 'translate' && !options.target_language}
+					<p class="inline-warn" role="status">
+						Has elegido traducir: indica abajo el idioma de destino, o no se traducirá nada.
+					</p>
+				{/if}
 				<div class="grid">
 					<label class="field">
 						<span>Motor de voz</span>
@@ -429,10 +438,16 @@
 						<span>Traducir a</span>
 						<input
 							type="text"
-							placeholder="sin traducir"
+							placeholder={translationAvailable ? 'es, en, fr…' : 'no disponible'}
+							disabled={!translationAvailable}
 							value={options.target_language ?? ''}
 							oninput={(e) => (options.target_language = e.currentTarget.value || null)}
 						/>
+						{#if !translationAvailable}
+							<span class="field-note">
+								Este despliegue no incluye traducción. Ver el aviso de arriba.
+							</span>
+						{/if}
 					</label>
 				</div>
 			</Disclosure>
@@ -537,8 +552,23 @@
 
 							<div class="downloads">
 								{#each job.outputs as output, index (output)}
-									<a class="chip link" href={downloadUrl(job.id, index)} download>
-										{filename(output).split('.').pop()}
+									{@const ext = (filename(output).split('.').pop() ?? '').toLowerCase()}
+									<a
+										class="download"
+										href={downloadUrl(job.id, index)}
+										download
+										aria-label="Descargar {filename(output)}"
+									>
+										<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none">
+											<path
+												d="M8 2v8m0 0L5 7m3 3l3-3M3 13h10"
+												stroke="currentColor"
+												stroke-width="1.6"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											/>
+										</svg>
+										Descargar {ext}
 									</a>
 								{/each}
 							</div>
@@ -744,6 +774,25 @@
 		flex-direction: column;
 		gap: var(--space-2);
 	}
+	.inline-warn {
+		margin: var(--space-3) 0 0;
+		padding: var(--space-2) var(--space-3);
+		background: color-mix(in srgb, var(--warn) 14%, transparent);
+		border-inline-start: 3px solid var(--warn);
+		border-radius: var(--radius);
+		font-size: var(--font-sm);
+		line-height: var(--leading);
+	}
+
+	.field-note {
+		font-size: var(--font-xs);
+		color: var(--text-muted);
+		text-transform: none;
+		letter-spacing: 0;
+		font-weight: 400;
+		line-height: var(--leading);
+	}
+
 	.field span {
 		font-size: var(--font-xs);
 		font-weight: 600;
@@ -1032,6 +1081,34 @@
 		width: 100%;
 		margin-top: var(--space-3);
 		border-radius: var(--radius);
+	}
+
+	/* Un chip con la extensión suelta («md») no se lee como algo pulsable. Con
+	   icono, verbo y borde de acento sí. Es el elemento que más se busca al
+	   terminar una conversión: merece parecer un botón. */
+	.download {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-height: var(--target-min);
+		padding: var(--space-2) var(--space-3);
+		background: var(--surface-hover);
+		border: 1px solid var(--accent);
+		border-radius: var(--radius);
+		color: var(--accent);
+		font-size: var(--font-sm);
+		font-weight: 600;
+		text-decoration: none;
+		transition:
+			background var(--duration-fast) var(--ease),
+			color var(--duration-fast) var(--ease);
+	}
+	.download:hover {
+		background: var(--accent-solid);
+		color: var(--accent-contrast);
+	}
+	.download:active {
+		transform: translateY(1px);
 	}
 
 	.downloads {

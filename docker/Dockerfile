@@ -13,11 +13,25 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /build
 
+# Extras incluidos en la imagen. Se dejan como argumento porque el equilibrio
+# entre tamaño y funciones depende del despliegue:
+#
+#   documents   parsers de PDF, EPUB, DOCX… imprescindible
+#   tts-piper   voz en 25+ idiomas, ONNX, ligero
+#   translate   ctranslate2 + transformers. Unos 200 MB, sin torch
+#   tts-kokoro  voz más natural, pero arrastra torch: más de 2 GB
+#
+# Kokoro queda fuera por defecto a propósito: multiplicar por cinco el tamaño de
+# la imagen para todo el mundo, cuando Piper ya cubre los idiomas, no compensa.
+# Para incluirlo:
+#   docker compose build --build-arg HEARME_EXTRAS=documents,tts-piper,translate,tts-kokoro
+ARG HEARME_EXTRAS=documents,tts-piper,translate
+
 # Solo los metadatos primero: esta capa se cachea mientras no cambien las deps.
 COPY pyproject.toml README.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv /opt/venv && \
-    VIRTUAL_ENV=/opt/venv uv pip install ".[documents,tts-piper]"
+    VIRTUAL_ENV=/opt/venv uv pip install ".[${HEARME_EXTRAS}]"
 
 COPY src ./src
 # Instalación normal, NO editable, y es importante.

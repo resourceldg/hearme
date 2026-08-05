@@ -221,6 +221,18 @@ def select_translator(
     translators: Sequence[Any], source: str, target: str, *, allow_non_commercial: bool
 ) -> Any:
     """Marian si cubre el par; si no, NLLB. Nunca al revés."""
+    # Sin traductores registrados el problema no es el par de idiomas, es que la
+    # dependencia no está instalada. Distinguirlo importa: el mensaje genérico
+    # mandaba a activar modelos no comerciales, que no arregla nada y hace perder
+    # el rato a quien lo sigue.
+    if not translators:
+        raise LookupError(
+            "La traducción no está instalada en este despliegue. "
+            "Instala el extra: pip install 'hearme[translate]'. "
+            "Con Docker: docker compose build --build-arg "
+            "HEARME_EXTRAS=documents,tts-piper,translate"
+        )
+
     commercial_ok = [t for t in translators if not t.non_commercial and t.supports(source, target)]
     if commercial_ok:
         return commercial_ok[0]
@@ -232,7 +244,14 @@ def select_translator(
         )
         return fallback[0]
 
+    if fallback:
+        raise LookupError(
+            f"El par {source}->{target} solo existe en un modelo con licencia no "
+            "comercial. Si tu uso lo permite, activa "
+            "HEARME_ALLOW_NON_COMMERCIAL_MODELS=true."
+        )
+
+    disponibles = ", ".join(sorted(t.name for t in translators))
     raise LookupError(
-        f"No hay traductor disponible para {source}->{target}. "
-        "Si el par existe solo en NLLB, activa HEARME_ALLOW_NON_COMMERCIAL_MODELS=true."
+        f"Ningún traductor instalado cubre {source}->{target}. Disponibles: {disponibles}."
     )

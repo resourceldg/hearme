@@ -114,6 +114,14 @@ docker compose up -d
 
 La API queda en `:8000` y su documentación interactiva en `/docs`.
 
+La imagen trae parsers, voz con Piper y traducción. **Kokoro queda fuera por
+defecto**: arrastra torch y multiplica por cinco el tamaño. Para incluirlo:
+
+```bash
+docker compose build --build-arg \
+  HEARME_EXTRAS=documents,tts-piper,translate,tts-kokoro
+```
+
 Perfiles opcionales, que se activan solo si se piden:
 
 ```bash

@@ -158,6 +158,14 @@ async def system_info() -> SystemInfo:
         warnings.append("ffmpeg no encontrado: la exportación a mp3/m4b fallará")
     if shutil.which("ocrmypdf") is None:
         warnings.append("ocrmypdf no encontrado: los PDF escaneados no se podrán leer")
+    # Sin este aviso, elegir «Traducir» en la interfaz fallaba a mitad de la
+    # conversión, cuando ya se había esperado el parseo entero.
+    if not plugins.translators.names():
+        warnings.append(
+            "Traducción no disponible: falta el extra 'translate'. "
+            "Con Docker: docker compose build --build-arg "
+            "HEARME_EXTRAS=documents,tts-piper,translate"
+        )
     # Idiomas que el despliegue puede narrar hoy: es el dato que decide si una
     # biblioteca puede atender a su comunidad, y el único que la interfaz enseña.
     languages = sorted({lang for e in engines if e["available"] for lang in e["languages"]})
