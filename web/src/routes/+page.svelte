@@ -92,7 +92,17 @@
 	/** Con «Todo», las opciones nacen abiertas en vez de esconderse cada vez. */
 	const showAll = $derived(preferences.current.expertise === 'full');
 	/** Un campo que no puede funcionar debe verse deshabilitado, no fallar al usarlo. */
-	const translationAvailable = $derived((system?.translators.length ?? 0) > 0);
+	const translationAvailable = $derived((system?.translators?.length ?? 0) > 0);
+
+	/**
+	 * ¿Responde la API una forma que esta interfaz entiende?
+	 *
+	 * Frontend y API se despliegan por separado —son dos contenedores— así que
+	 * pueden quedar desparejados. Antes eso reventaba el render entero y dejaba
+	 * la página en blanco, que es el peor diagnóstico posible: parece que la
+	 * aplicación está rota cuando solo falta reconstruir una imagen.
+	 */
+	const apiMismatch = $derived(Boolean(system) && system?.runtime === undefined);
 
 	// --- datos -----------------------------------------------------------------
 
@@ -295,7 +305,7 @@
 
 		<div class="topbar-actions">
 			{#if system}
-				<span class="chip-static">{system.runtime.languages.length} idiomas</span>
+				<span class="chip-static">{system.runtime?.languages?.length ?? 0} idiomas</span>
 			{/if}
 			<button
 				type="button"
@@ -339,6 +349,17 @@
 	<main id="contenido">
 		<!-- Región viva: los cambios de estado también se anuncian a quien no los ve. -->
 		<div aria-live="polite" class="sr-only">{announcement}</div>
+
+		{#if apiMismatch}
+			<div class="alert err" role="alert">
+				<strong>El servicio y esta interfaz no están sincronizados</strong>
+				<span>
+					La API responde en un formato anterior a esta versión de la interfaz. Suele
+					significar que se reconstruyó el contenedor <code>web</code> pero no el de la API.
+				</span>
+				<span>Ejecuta: <code>docker compose build api &amp;&amp; docker compose up -d</code></span>
+			</div>
+		{/if}
 
 		{#if error}
 			<div class="alert err" role="alert">
@@ -494,7 +515,7 @@
 								class="chip"
 								class:on
 								aria-pressed={on}
-								disabled={!system?.exporters.includes(format)}
+								disabled={!system?.exporters?.includes(format)}
 								onclick={() => toggleFormat(format)}
 							>
 								{format}
