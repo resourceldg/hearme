@@ -26,6 +26,7 @@
 	import Disclosure from '$lib/components/Disclosure.svelte';
 	import SetupAssistant from '$lib/components/SetupAssistant.svelte';
 	import VoiceCenter from '$lib/components/VoiceCenter.svelte';
+	import FeedbackWidget from '$lib/components/FeedbackWidget.svelte';
 	import ExperiencePanel from '$lib/components/ExperiencePanel.svelte';
 	import Segmented from '$lib/components/Segmented.svelte';
 	import { preferences } from '$lib/experience/preferences.svelte';
@@ -702,6 +703,15 @@
 							{#if audio >= 0}
 								<!-- svelte-ignore a11y_media_has_caption -->
 								<audio controls preload="none" src={downloadUrl(job.id, audio)}></audio>
+							{/if}
+
+							{#if job.engine}
+								<FeedbackWidget
+									engine={job.engine}
+									voice={job.voice ?? ''}
+									style={options.style ?? 'neutral'}
+									language={job.language ?? ''}
+								/>
 							{/if}
 
 							<div class="downloads">

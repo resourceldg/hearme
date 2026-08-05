@@ -155,9 +155,11 @@ class Reputation:
         if self.comments_given:
             piezas.append(f"{self.comments_given} con comentario")
 
+        plural_v = "ón" if self.samples == 1 else "ones"
+        plural_p = "" if self.contributors == 1 else "s"
         base = (
-            f"{self.score:.1f} de 5, a partir de {self.samples} valoraci{'ón' if self.samples == 1 else 'ones'}"
-            f" de {self.contributors} persona{'' if self.contributors == 1 else 's'}"
+            f"{self.score:.1f} de 5, a partir de {self.samples} valoraci{plural_v}"
+            f" de {self.contributors} persona{plural_p}"
             f" ({', '.join(piezas)})."
         )
 

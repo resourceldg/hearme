@@ -213,6 +213,38 @@ export const validatePlan = (plan: Partial<ListeningPlan>) =>
 		body: JSON.stringify(plan)
 	});
 
+/** Etiqueta extraída de un comentario, con la evidencia que la produjo. */
+export interface UnderstoodTag {
+	tag: string;
+	label: string;
+	matched: string;
+	negated: boolean;
+	sentiment?: string;
+}
+
+export interface FeedbackResponse {
+	recorded: boolean;
+	understood: UnderstoodTag[];
+	explanation: string;
+	reputation: { score: number; samples: number; confident: boolean; explanation: string };
+}
+
+/** Registra una valoración. Devuelve qué se entendió, para poder corregirlo. */
+export const submitFeedback = (payload: {
+	engine: string;
+	voice: string;
+	style: string;
+	language: string;
+	stars?: number | null;
+	thumbs_up?: boolean | null;
+	comment?: string;
+}) =>
+	request<FeedbackResponse>('/api/feedback', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload)
+	});
+
 export const downloadUrl = (jobId: string, index: number) =>
 	`${API_URL}/api/jobs/${jobId}/download/${index}`;
 

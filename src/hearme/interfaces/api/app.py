@@ -34,6 +34,7 @@ from hearme.application.plugins import plugins
 from hearme.application.study import StudyService
 from hearme.config import settings
 from hearme.domain.models import JobStatus, NarrationStyle, ReadingMode, Utterance
+from hearme.feedback import Feedback, ReputationIndex, Subject, suggest_adjustment
 from hearme.infrastructure.hardware import detect
 from hearme.infrastructure.persistence.database import dispose, init_db
 from hearme.narration.adapters import capabilities_for
@@ -51,6 +52,14 @@ from hearme.privacy.crypto import keyed_digest, random_token
 logger = logging.getLogger(__name__)
 
 _pool: WorkerPool | None = None
+
+#: Reputación acumulada en memoria.
+#:
+#: En memoria a propósito, de momento: persistirla exige decidir dónde vive el
+#: conocimiento compartido, y eso lo resuelve `knowledge.sync` cuando exista el
+#: servicio de sincronización. Mientras tanto es útil dentro de una sesión y no
+#: promete más de lo que puede cumplir.
+_reputation = ReputationIndex()
 
 
 @asynccontextmanager
@@ -519,6 +528,74 @@ async def download(job_id: str, index: int, queue: QueueDep) -> FileResponse:
         raise HTTPException(404, "El archivo ya no existe")
 
     return FileResponse(path, filename=path.name)
+
+
+class FeedbackIn(BaseModel):
+    """Una valoración. Las tres señales son opcionales, pero alguna hace falta."""
+
+    engine: str
+    voice: str = ""
+    style: str = ""
+    language: str = ""
+    stars: int | None = None
+    thumbs_up: bool | None = None
+    comment: str = ""
+    contributor: str = "local"
+
+
+@app.post("/api/feedback", status_code=201)
+async def submit_feedback(payload: FeedbackIn) -> dict[str, Any]:
+    """Registra una valoración y devuelve qué se entendió de ella.
+
+    Devolver las etiquetas extraídas no es cortesía: es la única forma de que
+    quien escribe pueda comprobar que se le entendió, y de corregir si no.
+    """
+    try:
+        valoracion = Feedback(
+            subject=Subject(
+                engine=payload.engine,
+                voice=payload.voice,
+                style=payload.style,
+                language=payload.language,
+            ),
+            stars=payload.stars,
+            thumbs_up=payload.thumbs_up,
+            comment=payload.comment,
+            contributor=payload.contributor,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    _reputation.add(valoracion)
+    reputacion = _reputation.of(valoracion.subject)
+
+    return {
+        "recorded": True,
+        "understood": [t.to_dict() for t in valoracion.tags],
+        "explanation": valoracion.explain_tags(),
+        "reputation": reputacion.to_dict(),
+    }
+
+
+@app.get("/api/reputation")
+async def get_reputation(
+    engine: str, voice: str = "", style: str = "", language: str = ""
+) -> dict[str, Any]:
+    """Reputación de una configuración, con su explicación.
+
+    Siempre responde: sin valoraciones devuelve la puntuación previa y lo dice.
+    Un hueco es información, y ocultarlo obligaría a la interfaz a adivinar.
+    """
+    sujeto = Subject(engine=engine, voice=voice, style=style, language=language)
+    reputacion = _reputation.of(sujeto)
+    problemas = _reputation.problems_of(sujeto)
+
+    return {
+        **reputacion.to_dict(),
+        "frequent_problems": [p.to_dict() for p in problemas],
+        # La sugerencia se devuelve, nunca se aplica sola.
+        "suggested_adjustment": suggest_adjustment(problemas),
+    }
 
 
 @app.post("/api/study/{job_id}")
