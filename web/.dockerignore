@@ -1,0 +1,15 @@
+# Sin este archivo, `COPY . .` copiaba node_modules del host (65 MB, compilados
+# para la libc del anfitrión) ENCIMA de los que `npm ci` acababa de instalar en
+# Alpine, y arrastraba también el build/ anterior. Resultado: builds lentos y una
+# imagen que podía servir artefactos viejos sin que nada lo delatara.
+node_modules
+build
+.svelte-kit
+
+# Salidas y estado local que no pintan nada en la imagen
+.env
+.env.*
+*.log
+.DS_Store
+.vscode
+.idea

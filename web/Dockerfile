@@ -1,7 +1,13 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
+
+# Metadatos primero: esta capa se cachea mientras no cambien las dependencias.
 COPY package*.json ./
 RUN npm ci
+
+# El resto del código. `.dockerignore` excluye node_modules y build: sin él,
+# esta línea sobreescribía los módulos recién instalados con los del anfitrión,
+# compilados para otra libc.
 COPY . .
 RUN npm run build && npm prune --omit=dev
 
